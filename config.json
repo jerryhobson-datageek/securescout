@@ -1,0 +1,21 @@
+{
+  "port": 3001,
+  "scanIntervalMinutes": 60,
+  "services": [
+    {
+      "name": "Nginx Proxy Manager",
+      "host": "proxy.newtekk.com",
+      "url": "https://proxy.newtekk.com"
+    },
+    {
+      "name": "Portainer",
+      "host": "docker.newtekk.com",
+      "url": "https://docker.newtekk.com"
+    },
+    {
+      "name": "WireGuard Easy",
+      "host": "vpn.newtekk.com",
+      "url": "https://vpn.newtekk.com"
+    }
+  ]
+}

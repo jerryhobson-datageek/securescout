@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SecureScout</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #222536;
+    --border: #2e3250;
+    --text: #e2e8f0;
+    --muted: #8892b0;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --purple: #a78bfa;
+    --cyan: #22d3ee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon { font-size: 28px; }
+  .logo h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+  .logo span { color: var(--cyan); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .last-scan { font-size: 0.78rem; color: var(--muted); }
+
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 8px 18px;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  button:hover { opacity: 0.85; }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: var(--cyan); color: #0f1117; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  main { padding: 28px 32px; max-width: 1400px; margin: 0 auto; }
+
+  .summary-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+  .summary-card .label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .summary-card .value { font-size: 1.7rem; font-weight: 700; }
+
+  .services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 20px;
+  }
+
+  .service-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .service-card:hover { border-color: var(--cyan); }
+
+  .card-header {
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .card-title { font-weight: 700; font-size: 1rem; }
+  .card-url { font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
+  .card-actions { display: flex; align-items: center; gap: 8px; }
+  .btn-scan-single { padding: 5px 12px; font-size: 0.78rem; }
+
+  .card-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.73rem;
+    font-weight: 600;
+  }
+  .badge-ok { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
+  .badge-warn { background: rgba(251,191,36,0.12); color: var(--yellow); border: 1px solid rgba(251,191,36,0.25); }
+  .badge-fail { background: rgba(248,113,113,0.12); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+  .badge-scanning { background: rgba(96,165,250,0.12); color: var(--blue); border: 1px solid rgba(96,165,250,0.25); }
+
+  .card-body { padding: 16px 20px; display: grid; gap: 12px; }
+
+  .section-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .check-section {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  /* SSL */
+  .ssl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+  .ssl-field { font-size: 0.78rem; }
+  .ssl-field .fl { color: var(--muted); font-size: 0.68rem; }
+  .ssl-field .fv { color: var(--text); font-weight: 500; word-break: break-all; }
+  .days-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+  .days-ok { background: rgba(74,222,128,0.15); color: var(--green); }
+  .days-warn { background: rgba(251,191,36,0.15); color: var(--yellow); }
+  .days-crit { background: rgba(248,113,113,0.15); color: var(--red); }
+
+  /* Security headers */
+  .grade-badge {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin-right: 10px;
+    float: left;
+  }
+  .grade-A { background: rgba(74,222,128,0.2); color: var(--green); }
+  .grade-B { background: rgba(96,165,250,0.2); color: var(--blue); }
+  .grade-C { background: rgba(251,191,36,0.2); color: var(--yellow); }
+  .grade-D { background: rgba(251,146,60,0.2); color: #fb923c; }
+  .grade-F { background: rgba(248,113,113,0.2); color: var(--red); }
+
+  .headers-summary { display: flex; align-items: center; margin-bottom: 10px; }
+  .headers-score-text { font-size: 0.82rem; }
+  .headers-score-text strong { font-size: 1rem; }
+
+  .header-checks { display: grid; gap: 4px; }
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-row:last-child { border-bottom: none; }
+  .header-name { color: var(--muted); }
+  .header-note { color: var(--text); font-size: 0.7rem; text-align: right; max-width: 55%; word-break: break-word; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-right: 6px; }
+  .dot-ok { background: var(--green); }
+  .dot-warn { background: var(--yellow); }
+  .dot-fail { background: var(--red); }
+
+  /* WAF */
+  .waf-status { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .waf-icon { font-size: 1.4rem; }
+  .waf-name { font-size: 0.95rem; font-weight: 700; }
+  .waf-confidence { font-size: 0.7rem; color: var(--muted); }
+  .waf-detail { font-size: 0.75rem; color: var(--muted); }
+
+  /* Server */
+  .server-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; }
+  .server-field .fl { color: var(--muted); font-size: 0.68rem; }
+  .server-field .fv { color: var(--text); font-size: 0.78rem; font-weight: 500; }
+
+  /* Browser */
+  .browser-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .tls-chip {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border: 1px solid;
+  }
+  .tls-ok { background: rgba(74,222,128,0.1); color: var(--green); border-color: rgba(74,222,128,0.3); }
+  .tls-fail { background: rgba(248,113,113,0.1); color: var(--red); border-color: rgba(248,113,113,0.3); }
+  .tls-info { background: rgba(96,165,250,0.1); color: var(--blue); border-color: rgba(96,165,250,0.3); }
+  .browser-notes { font-size: 0.72rem; color: var(--muted); line-height: 1.6; }
+
+  /* Skeleton */
+  .skeleton {
+    background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 6px;
+    height: 14px;
+    margin: 4px 0;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  .error-msg { color: var(--red); font-size: 0.8rem; padding: 8px; }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 5px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 600px) {
+    main { padding: 16px; }
+    header { padding: 14px 16px; }
+    .services-grid { grid-template-columns: 1fr; }
+    .ssl-grid, .server-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-icon">🛡️</span>
+    <h1>Secure<span>Scout</span></h1>
+  </div>
+  <div class="header-right">
+    <span class="last-scan" id="lastScan">—</span>
+    <button class="btn-secondary btn-scan-single" id="btnRefresh" onclick="scanAll()">↻ Refresh</button>
+    <button class="btn-primary" id="btnScanAll" onclick="scanAll()">Scan All</button>
+  </div>
+</header>
+
+<main>
+  <div class="summary-bar" id="summaryBar">
+    <div class="summary-card">
+      <div class="label">Services</div>
+      <div class="value" id="sumServices">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">SSL OK</div>
+      <div class="value" id="sumSSL" style="color:var(--green)">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">WAF Detected</div>
+      <div class="value" id="sumWAF" style="color:var(--cyan)">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Avg Header Grade</div>
+      <div class="value" id="sumGrade">—</div>
+    </div>
+    <div class="summary-card">
+      <div class="label">Avg Response</div>
+      <div class="value" id="sumResponse">—</div>
+    </div>
+  </div>
+
+  <div class="services-grid" id="servicesGrid"></div>
+</main>
+
+<script>
+let services = [];
+let results = {};
+let scanning = false;
+
+async function init() {
+  const res = await fetch('/api/services');
+  services = await res.json();
+  renderCards(services);
+  // Load cached results if any
+  const cached = await fetch('/api/results').then(r => r.json()).catch(() => []);
+  if (cached.length) {
+    cached.forEach(r => { results[r.url] = r; });
+    renderResults();
+  } else {
+    scanAll();
+  }
+}
+
+function renderCards(svcs) {
+  const grid = document.getElementById('servicesGrid');
+  grid.innerHTML = svcs.map(s => `
+    <div class="service-card" id="card-${btoa(s.url)}">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${esc(s.name)}</div>
+          <div class="card-url">${esc(s.url)}</div>
+        </div>
+        <div class="card-actions">
+          <span class="card-status-badge badge-scanning" id="badge-${btoa(s.url)}">
+            — Pending
+          </span>
+          <button class="btn-secondary btn-scan-single" onclick="scanOne('${s.url}')">Scan</button>
+        </div>
+      </div>
+      <div class="card-body" id="body-${btoa(s.url)}">
+        ${skeletonBody()}
+      </div>
+    </div>
+  `).join('');
+}
+
+function skeletonBody() {
+  return `
+    <div class="check-section"><div class="section-title">SSL Certificate</div>
+      <div class="skeleton"></div><div class="skeleton" style="width:70%"></div></div>
+    <div class="check-section"><div class="section-title">Security Headers</div>
+      <div class="skeleton"></div><div class="skeleton" style="width:80%"></div></div>
+    <div class="check-section"><div class="section-title">WAF</div>
+      <div class="skeleton" style="width:60%"></div></div>
+    <div class="check-section"><div class="section-title">Server Info</div>
+      <div class="skeleton"></div></div>
+    <div class="check-section"><div class="section-title">Browser Support</div>
+      <div class="skeleton" style="width:75%"></div></div>
+  `;
+}
+
+async function scanAll() {
+  if (scanning) return;
+  scanning = true;
+  const btn = document.getElementById('btnScanAll');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Scanning…';
+
+  services.forEach(s => {
+    const key = btoa(s.url);
+    document.getElementById('badge-' + key).className = 'card-status-badge badge-scanning';
+    document.getElementById('badge-' + key).innerHTML = '<span class="spinner"></span> Scanning';
+    document.getElementById('body-' + key).innerHTML = skeletonBody();
+  });
+
+  try {
+    const data = await fetch('/api/scan/all').then(r => r.json());
+    data.forEach(r => { results[r.url] = r; });
+    renderResults();
+  } catch (e) {
+    console.error(e);
+  }
+
+  scanning = false;
+  btn.disabled = false;
+  btn.textContent = 'Scan All';
+  document.getElementById('lastScan').textContent = 'Last scan: ' + new Date().toLocaleTimeString();
+}
+
+async function scanOne(url) {
+  const key = btoa(url);
+  document.getElementById('badge-' + key).className = 'card-status-badge badge-scanning';
+  document.getElementById('badge-' + key).innerHTML = '<span class="spinner"></span> Scanning';
+  document.getElementById('body-' + key).innerHTML = skeletonBody();
+
+  const data = await fetch('/api/scan?url=' + encodeURIComponent(url)).then(r => r.json());
+  results[url] = data;
+  renderOneResult(data);
+}
+
+function renderResults() {
+  Object.values(results).forEach(r => renderOneResult(r));
+  updateSummary();
+}
+
+function renderOneResult(r) {
+  const key = btoa(r.url);
+  const badge = document.getElementById('badge-' + key);
+  const body = document.getElementById('body-' + key);
+  if (!badge || !body) return;
+
+  // Badge
+  if (!r.reachable) {
+    badge.className = 'card-status-badge badge-fail';
+    badge.textContent = '✗ Unreachable';
+  } else if (r.ssl && r.ssl.ok && r.ssl.daysLeft < 14) {
+    badge.className = 'card-status-badge badge-warn';
+    badge.textContent = '⚠ SSL Expiring';
+  } else if (r.securityHeaders && r.securityHeaders.grade === 'F') {
+    badge.className = 'card-status-badge badge-warn';
+    badge.textContent = '⚠ Weak Headers';
+  } else {
+    badge.className = 'card-status-badge badge-ok';
+    badge.textContent = '✓ OK';
+  }
+
+  body.innerHTML = [
+    renderSSL(r.ssl),
+    renderHeaders(r.securityHeaders),
+    renderWAF(r.waf),
+    renderServer(r.server, r.responseTime, r.httpStatus),
+    renderBrowser(r.browserSupport)
+  ].join('');
+}
+
+function renderSSL(ssl) {
+  if (!ssl) return `<div class="check-section"><div class="section-title">SSL Certificate</div><div class="error-msg">Not checked (HTTP only)</div></div>`;
+  if (!ssl.ok) return `<div class="check-section"><div class="section-title">SSL Certificate</div><div class="error-msg">✗ ${esc(ssl.error)}</div></div>`;
+
+  const days = ssl.daysLeft;
+  const daysClass = days > 30 ? 'days-ok' : days > 14 ? 'days-warn' : 'days-crit';
+  const daysLabel = days < 0 ? 'EXPIRED' : `${days}d left`;
+
+  return `
+    <div class="check-section">
+      <div class="section-title">SSL Certificate</div>
+      <div class="ssl-grid">
+        <div class="ssl-field"><div class="fl">Subject</div><div class="fv">${esc(ssl.subject)}</div></div>
+        <div class="ssl-field"><div class="fl">Issuer</div><div class="fv">${esc(ssl.issuer)}</div></div>
+        <div class="ssl-field"><div class="fl">Expires</div><div class="fv">${formatDate(ssl.validTo)} <span class="days-chip ${daysClass}">${daysLabel}</span></div></div>
+        <div class="ssl-field"><div class="fl">Protocol</div><div class="fv">${esc(ssl.protocol || '—')}</div></div>
+        <div class="ssl-field"><div class="fl">Cipher</div><div class="fv">${esc(ssl.cipher || '—')}</div></div>
+        <div class="ssl-field"><div class="fl">Self-Signed</div><div class="fv" style="color:${ssl.selfSigned ? 'var(--yellow)' : 'var(--green)'}">${ssl.selfSigned ? '⚠ Yes' : '✓ No'}</div></div>
+      </div>
+    </div>`;
+}
+
+function renderHeaders(h) {
+  if (!h) return `<div class="check-section"><div class="section-title">Security Headers</div><div class="error-msg">Not available</div></div>`;
+
+  const gradeClass = 'grade-' + h.grade;
+  const checksHTML = h.checks.map(c => {
+    const dotClass = c.pass === true ? 'dot-ok' : c.pass === 'warn' ? 'dot-warn' : 'dot-fail';
+    return `<div class="header-row">
+      <span style="display:flex;align-items:center"><span class="dot ${dotClass}"></span><span class="header-name">${esc(c.label)}</span></span>
+      <span class="header-note">${esc(c.note)}</span>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="check-section">
+      <div class="section-title">Security Headers</div>
+      <div class="headers-summary">
+        <span class="grade-badge ${gradeClass}">${h.grade}</span>
+        <span class="headers-score-text"><strong>${h.score}%</strong> score</span>
+      </div>
+      <div class="header-checks">${checksHTML}</div>
+    </div>`;
+}
+
+function renderWAF(waf) {
+  if (!waf) return `<div class="check-section"><div class="section-title">WAF Detection</div><div class="error-msg">Not available</div></div>`;
+
+  const icon = waf.detected ? '🛡️' : '⚠️';
+  const color = waf.detected ? 'var(--green)' : 'var(--yellow)';
+  const name = waf.name || 'No WAF detected';
+  const conf = waf.confidence === 'high' ? 'High confidence' : waf.confidence === 'medium' ? 'Medium confidence (probe blocked)' : 'No WAF signature found';
+
+  return `
+    <div class="check-section">
+      <div class="section-title">WAF Detection</div>
+      <div class="waf-status">
+        <span class="waf-icon">${icon}</span>
+        <div>
+          <div class="waf-name" style="color:${color}">${esc(name)}</div>
+          <div class="waf-confidence">${conf}</div>
+        </div>
+      </div>
+      <div class="waf-detail">Probe response: HTTP ${waf.probeStatus || '—'} ${waf.probeBlocked ? '(blocked ✓)' : '(not blocked)'}</div>
+    </div>`;
+}
+
+function renderServer(srv, responseTime, status) {
+  if (!srv) return `<div class="check-section"><div class="section-title">Server Info</div><div class="error-msg">Not available</div></div>`;
+
+  return `
+    <div class="check-section">
+      <div class="section-title">Server Info</div>
+      <div class="server-grid">
+        <div class="server-field"><div class="fl">Software</div><div class="fv">${esc(srv.software)}</div></div>
+        <div class="server-field"><div class="fl">IP Address</div><div class="fv">${esc(srv.ip)}</div></div>
+        <div class="server-field"><div class="fl">HTTP Status</div><div class="fv">${status || '—'}</div></div>
+        <div class="server-field"><div class="fl">Response Time</div><div class="fv">${responseTime ? responseTime + ' ms' : '—'}</div></div>
+        ${srv.poweredBy ? `<div class="server-field"><div class="fl">Powered By</div><div class="fv">${esc(srv.poweredBy)}</div></div>` : ''}
+        ${srv.via ? `<div class="server-field"><div class="fl">Via</div><div class="fv">${esc(srv.via)}</div></div>` : ''}
+      </div>
+    </div>`;
+}
+
+function renderBrowser(b) {
+  if (!b) return `<div class="check-section"><div class="section-title">Browser Support</div><div class="error-msg">Not available</div></div>`;
+
+  return `
+    <div class="check-section">
+      <div class="section-title">Browser Support</div>
+      <div class="browser-chips">
+        <span class="tls-chip ${b.tls13 ? 'tls-ok' : 'tls-fail'}">TLS 1.3 ${b.tls13 ? '✓' : '✗'}</span>
+        <span class="tls-chip ${b.tls12 ? 'tls-ok' : 'tls-fail'}">TLS 1.2 ${b.tls12 ? '✓' : '✗'}</span>
+        <span class="tls-chip ${b.http2 ? 'tls-info' : 'tls-fail'}">HTTP/2 ${b.http2 ? '✓' : '✗'}</span>
+      </div>
+      <div class="browser-notes">${b.notes ? b.notes.join(' · ') : ''}</div>
+    </div>`;
+}
+
+function updateSummary() {
+  const all = Object.values(results);
+  const sslOK = all.filter(r => r.ssl && r.ssl.ok && r.ssl.daysLeft > 0).length;
+  const wafCount = all.filter(r => r.waf && r.waf.detected).length;
+  const grades = all.filter(r => r.securityHeaders).map(r => r.securityHeaders.grade);
+  const gradeOrder = ['A','B','C','D','F'];
+  const avgGrade = grades.length
+    ? gradeOrder[Math.round(grades.reduce((s, g) => s + gradeOrder.indexOf(g), 0) / grades.length)]
+    : '—';
+  const times = all.filter(r => r.responseTime).map(r => r.responseTime);
+  const avgTime = times.length ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : null;
+
+  document.getElementById('sumServices').textContent = all.length;
+  document.getElementById('sumSSL').textContent = `${sslOK}/${all.length}`;
+  document.getElementById('sumWAF').textContent = `${wafCount}/${all.length}`;
+  const gradeEl = document.getElementById('sumGrade');
+  gradeEl.textContent = avgGrade;
+  gradeEl.style.color = { A: 'var(--green)', B: 'var(--blue)', C: 'var(--yellow)', D: '#fb923c', F: 'var(--red)' }[avgGrade] || 'var(--text)';
+  document.getElementById('sumResponse').textContent = avgTime ? avgTime + ' ms' : '—';
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+init();
+</script>
+</body>
+</html>
