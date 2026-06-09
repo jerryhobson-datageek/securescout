@@ -322,15 +322,18 @@ async function scanService(service) {
   const parsed = new URL(service.url);
   const host = parsed.hostname;
   const isHTTPS = parsed.protocol === 'https:';
+  // sslHost allows HTTP-only internal URLs to still check the public SSL cert
+  const sslHost = service.sslHost || host;
+  const checkSsl = isHTTPS || !!service.sslHost;
 
   const [ssl, headersResult, probeResult, tls12, tls13, http2, dnsResult] = await Promise.all([
-    isHTTPS ? checkSSL(host) : Promise.resolve({ ok: false, error: 'Not HTTPS' }),
+    checkSsl ? checkSSL(sslHost) : Promise.resolve({ ok: false, error: 'Not HTTPS' }),
     fetchHeaders(service.url),
     probeWAF(service.url),
-    isHTTPS ? probeTLS(host, 443, 'TLSv1.2') : Promise.resolve({ supported: false }),
-    isHTTPS ? probeTLS(host, 443, 'TLSv1.3') : Promise.resolve({ supported: false }),
-    isHTTPS ? probeHTTP2(host) : Promise.resolve(false),
-    dns.lookup(host).catch(() => null)
+    checkSsl ? probeTLS(sslHost, 443, 'TLSv1.2') : Promise.resolve({ supported: false }),
+    checkSsl ? probeTLS(sslHost, 443, 'TLSv1.3') : Promise.resolve({ supported: false }),
+    checkSsl ? probeHTTP2(sslHost) : Promise.resolve(false),
+    dns.lookup(sslHost).catch(() => null)
   ]);
 
   const ip = dnsResult ? dnsResult.address : null;
