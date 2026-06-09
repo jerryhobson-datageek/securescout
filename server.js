@@ -7,14 +7,124 @@ const dns = require('dns').promises;
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const crypto = require('crypto');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
+const HISTORY_PATH = path.join(__dirname, 'history.json');
+
 let config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 
-// In-memory results cache
-const cache = {};
+// ── History ───────────────────────────────────────────────────────────────────
+const HISTORY_MAX = 30;
+let history = {};
+try { history = JSON.parse(fs.readFileSync(HISTORY_PATH, 'utf8')); } catch {}
 
-// ── SSL Certificate Check ────────────────────────────────────────────────────
+function saveHistory() {
+  fs.writeFileSync(HISTORY_PATH, JSON.stringify(history));
+}
+
+function appendHistory(result) {
+  const key = result.url;
+  if (!history[key]) history[key] = [];
+  history[key].push({
+    scannedAt: result.scannedAt,
+    grade: result.securityHeaders?.grade || null,
+    sslDaysLeft: result.ssl?.ok ? result.ssl.daysLeft : null,
+    reachable: result.reachable,
+    responseTime: result.responseTime || null
+  });
+  if (history[key].length > HISTORY_MAX) history[key] = history[key].slice(-HISTORY_MAX);
+  saveHistory();
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+const sessions = new Map(); // token → expiry timestamp
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  try {
+    const [salt, hash] = stored.split(':');
+    const attempt = crypto.scryptSync(password, salt, 64).toString('hex');
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(attempt, 'hex'));
+  } catch { return false; }
+}
+
+function createSession() {
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, Date.now() + 24 * 60 * 60 * 1000);
+  return token;
+}
+
+function validateSession(req) {
+  if (!config.auth?.password) return true; // no password set
+  const auth = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token) return false;
+  const expiry = sessions.get(token);
+  if (!expiry || Date.now() > expiry) { sessions.delete(token); return false; }
+  return true;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, expiry] of sessions) if (now > expiry) sessions.delete(token);
+}, 3600000);
+
+// ── Discord Alerts ────────────────────────────────────────────────────────────
+async function sendDiscord(message) {
+  const webhookUrl = config.discordWebhook;
+  if (!webhookUrl) return;
+  try {
+    const body = JSON.stringify({ content: message });
+    const parsed = new URL(webhookUrl);
+    const lib = parsed.protocol === 'https:' ? https : http;
+    await new Promise((resolve) => {
+      const req = lib.request(parsed, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+      }, (res) => { res.resume(); resolve(); });
+      req.on('error', resolve);
+      req.setTimeout(8000, () => { req.destroy(); resolve(); });
+      req.write(body);
+      req.end();
+    });
+  } catch {}
+}
+
+function checkAlerts(prev, next) {
+  if (!prev) return;
+  const name = next.name;
+
+  // Site went down
+  if (prev.reachable && !next.reachable) {
+    sendDiscord(`🔴 **${name}** is DOWN\n${next.url}`);
+  }
+  // Site came back up
+  if (!prev.reachable && next.reachable) {
+    sendDiscord(`🟢 **${name}** is back UP\n${next.url}`);
+  }
+  // SSL expiring (crossing below 30 days)
+  if (next.reachable && next.ssl?.ok && next.ssl.daysLeft < 30) {
+    const prevDays = prev.sslDaysLeft ?? (prev.ssl?.ok ? prev.ssl.daysLeft : null);
+    if (prevDays === null || prevDays >= 30) {
+      sendDiscord(`⚠️ **${name}** SSL cert expires in **${next.ssl.daysLeft} days**\nSubject: ${next.ssl.subject}`);
+    }
+  }
+  // Grade dropped
+  const gradeOrder = ['A', 'B', 'C', 'D', 'F'];
+  const prevGrade = prev.grade ?? prev.securityHeaders?.grade;
+  const nextGrade = next.securityHeaders?.grade;
+  if (prevGrade && nextGrade && gradeOrder.indexOf(nextGrade) > gradeOrder.indexOf(prevGrade)) {
+    sendDiscord(`📉 **${name}** security header grade dropped **${prevGrade} → ${nextGrade}**\n${next.url}`);
+  }
+}
+
+// ── SSL Certificate Check ─────────────────────────────────────────────────────
 function checkSSL(host, port = 443) {
   return new Promise((resolve) => {
     const socket = tls.connect({ host, port, servername: host, rejectUnauthorized: false }, () => {
@@ -23,16 +133,10 @@ function checkSSL(host, port = 443) {
         const protocol = socket.getProtocol();
         const cipher = socket.getCipher();
         socket.destroy();
-
-        if (!cert || !cert.subject) {
-          return resolve({ ok: false, error: 'No certificate returned' });
-        }
-
+        if (!cert || !cert.subject) return resolve({ ok: false, error: 'No certificate returned' });
         const validTo = new Date(cert.valid_to);
-        const validFrom = new Date(cert.valid_from);
         const now = new Date();
         const daysLeft = Math.floor((validTo - now) / 86400000);
-
         resolve({
           ok: true,
           subject: cert.subject.CN || cert.subject.O || host,
@@ -49,182 +153,127 @@ function checkSSL(host, port = 443) {
             ? cert.subjectaltname.replace(/DNS:/g, '').split(', ')
             : []
         });
-      } catch (e) {
-        socket.destroy();
-        resolve({ ok: false, error: e.message });
-      }
+      } catch (e) { socket.destroy(); resolve({ ok: false, error: e.message }); }
     });
     socket.on('error', (e) => resolve({ ok: false, error: e.message }));
     socket.setTimeout(8000, () => { socket.destroy(); resolve({ ok: false, error: 'Timeout' }); });
   });
 }
 
-// ── TLS Version Probe ────────────────────────────────────────────────────────
+// ── TLS Version Probe ─────────────────────────────────────────────────────────
 function probeTLS(host, port, tlsVersion) {
   return new Promise((resolve) => {
-    const opts = {
-      host, port, servername: host,
-      rejectUnauthorized: false,
-      minVersion: tlsVersion,
-      maxVersion: tlsVersion
-    };
-    const socket = tls.connect(opts, () => {
-      const proto = socket.getProtocol();
-      socket.destroy();
-      resolve({ supported: true, protocol: proto });
-    });
+    const socket = tls.connect(
+      { host, port, servername: host, rejectUnauthorized: false, minVersion: tlsVersion, maxVersion: tlsVersion },
+      () => { const proto = socket.getProtocol(); socket.destroy(); resolve({ supported: true, protocol: proto }); }
+    );
     socket.on('error', () => resolve({ supported: false }));
     socket.setTimeout(5000, () => { socket.destroy(); resolve({ supported: false }); });
   });
 }
 
-// ── HTTP/2 Probe ─────────────────────────────────────────────────────────────
+// ── HTTP/2 Probe ──────────────────────────────────────────────────────────────
 function probeHTTP2(host, port = 443) {
   return new Promise((resolve) => {
-    const socket = tls.connect({
-      host, port, servername: host,
-      rejectUnauthorized: false,
-      ALPNProtocols: ['h2', 'http/1.1']
-    }, () => {
-      const proto = socket.alpnProtocol;
-      socket.destroy();
-      resolve(proto === 'h2');
-    });
+    const socket = tls.connect(
+      { host, port, servername: host, rejectUnauthorized: false, ALPNProtocols: ['h2', 'http/1.1'] },
+      () => { const proto = socket.alpnProtocol; socket.destroy(); resolve(proto === 'h2'); }
+    );
     socket.on('error', () => resolve(false));
     socket.setTimeout(5000, () => { socket.destroy(); resolve(false); });
   });
 }
 
-// ── Security Headers + WAF + Server Info ────────────────────────────────────
+// ── Fetch Headers ─────────────────────────────────────────────────────────────
 function fetchHeaders(targetUrl) {
   return new Promise((resolve) => {
     const parsed = new URL(targetUrl);
     const lib = parsed.protocol === 'https:' ? https : http;
     const port = parsed.port || (parsed.protocol === 'https:' ? 443 : 80);
-
     const start = Date.now();
     const req = lib.request({
-      hostname: parsed.hostname,
-      port,
-      path: parsed.pathname || '/',
-      method: 'GET',
+      hostname: parsed.hostname, port, path: parsed.pathname || '/', method: 'GET',
       rejectUnauthorized: false,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (SecureScout/1.0)',
-        'Accept': 'text/html,application/xhtml+xml,*/*',
-        'Accept-Language': 'en-US,en;q=0.9'
-      }
-    }, (res) => {
-      const elapsed = Date.now() - start;
-      res.destroy();
-      resolve({ ok: true, status: res.statusCode, headers: res.headers, elapsed });
-    });
+      headers: { 'User-Agent': 'Mozilla/5.0 (SecureScout/1.0)', 'Accept': 'text/html,application/xhtml+xml,*/*', 'Accept-Language': 'en-US,en;q=0.9' }
+    }, (res) => { const elapsed = Date.now() - start; res.destroy(); resolve({ ok: true, status: res.statusCode, headers: res.headers, elapsed }); });
     req.on('error', (e) => resolve({ ok: false, error: e.message }));
     req.setTimeout(10000, () => { req.destroy(); resolve({ ok: false, error: 'Timeout' }); });
     req.end();
   });
 }
 
-// Probe with suspicious payload to test WAF blocking
+// ── WAF Probe ─────────────────────────────────────────────────────────────────
 function probeWAF(targetUrl) {
   return new Promise((resolve) => {
     const parsed = new URL(targetUrl);
     const lib = parsed.protocol === 'https:' ? https : http;
     const port = parsed.port || (parsed.protocol === 'https:' ? 443 : 80);
-
     const req = lib.request({
-      hostname: parsed.hostname,
-      port,
+      hostname: parsed.hostname, port,
       path: '/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E&id=1%20UNION%20SELECT%201--',
-      method: 'GET',
-      rejectUnauthorized: false,
+      method: 'GET', rejectUnauthorized: false,
       headers: { 'User-Agent': 'Mozilla/5.0 (SecureScout/1.0)', 'Accept': '*/*' }
-    }, (res) => {
-      res.destroy();
-      resolve({ status: res.statusCode, headers: res.headers });
-    });
+    }, (res) => { res.destroy(); resolve({ status: res.statusCode, headers: res.headers }); });
     req.on('error', () => resolve({ status: null, headers: {} }));
     req.setTimeout(8000, () => { req.destroy(); resolve({ status: null, headers: {} }); });
     req.end();
   });
 }
 
+// ── Security Headers ──────────────────────────────────────────────────────────
 function analyzeSecurityHeaders(headers) {
   const checks = [
     {
-      key: 'strict-transport-security',
-      label: 'HSTS',
-      weight: 20,
+      key: 'strict-transport-security', label: 'HSTS', weight: 20,
+      fix: 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;',
       grade: (v) => {
         if (!v) return { pass: false, note: 'Missing' };
         const maxAge = parseInt((v.match(/max-age=(\d+)/) || [])[1] || 0);
-        if (maxAge >= 31536000) return { pass: true, note: `max-age=${maxAge}` };
-        return { pass: 'warn', note: `max-age too short (${maxAge})` };
+        return maxAge >= 31536000 ? { pass: true, note: `max-age=${maxAge}` } : { pass: 'warn', note: `max-age too short (${maxAge})` };
       }
     },
     {
-      key: 'content-security-policy',
-      label: 'CSP',
-      weight: 20,
-      grade: (v) => v
-        ? { pass: true, note: v.length > 80 ? v.substring(0, 77) + '...' : v }
-        : { pass: false, note: 'Missing' }
+      key: 'content-security-policy', label: 'CSP', weight: 20,
+      fix: "add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';\" always;",
+      grade: (v) => v ? { pass: true, note: v.length > 80 ? v.substring(0, 77) + '...' : v } : { pass: false, note: 'Missing' }
     },
     {
-      key: 'x-frame-options',
-      label: 'X-Frame-Options',
-      weight: 10,
-      grade: (v) => v
-        ? { pass: true, note: v }
-        : { pass: false, note: 'Missing — clickjacking risk' }
+      key: 'x-frame-options', label: 'X-Frame-Options', weight: 10,
+      fix: 'add_header X-Frame-Options "SAMEORIGIN" always;',
+      grade: (v) => v ? { pass: true, note: v } : { pass: false, note: 'Missing — clickjacking risk' }
     },
     {
-      key: 'x-content-type-options',
-      label: 'X-Content-Type-Options',
-      weight: 10,
-      grade: (v) => v === 'nosniff'
-        ? { pass: true, note: 'nosniff' }
-        : { pass: false, note: v ? `Unexpected: ${v}` : 'Missing' }
+      key: 'x-content-type-options', label: 'X-Content-Type-Options', weight: 10,
+      fix: 'add_header X-Content-Type-Options "nosniff" always;',
+      grade: (v) => v === 'nosniff' ? { pass: true, note: 'nosniff' } : { pass: false, note: v ? `Unexpected: ${v}` : 'Missing' }
     },
     {
-      key: 'referrer-policy',
-      label: 'Referrer-Policy',
-      weight: 10,
-      grade: (v) => v
-        ? { pass: true, note: v }
-        : { pass: 'warn', note: 'Missing (browser default applies)' }
+      key: 'referrer-policy', label: 'Referrer-Policy', weight: 10,
+      fix: 'add_header Referrer-Policy "strict-origin-when-cross-origin" always;',
+      grade: (v) => v ? { pass: true, note: v } : { pass: 'warn', note: 'Missing (browser default applies)' }
     },
     {
-      key: 'permissions-policy',
-      label: 'Permissions-Policy',
-      weight: 10,
-      grade: (v) => v
-        ? { pass: true, note: v.length > 60 ? v.substring(0, 57) + '...' : v }
-        : { pass: 'warn', note: 'Missing' }
+      key: 'permissions-policy', label: 'Permissions-Policy', weight: 10,
+      fix: 'add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;',
+      grade: (v) => v ? { pass: true, note: v.length > 60 ? v.substring(0, 57) + '...' : v } : { pass: 'warn', note: 'Missing' }
     },
     {
-      key: 'x-xss-protection',
-      label: 'X-XSS-Protection',
-      weight: 5,
+      key: 'x-xss-protection', label: 'X-XSS-Protection', weight: 5,
+      fix: 'add_header X-XSS-Protection "1; mode=block" always;',
       grade: (v) => {
         if (!v) return { pass: 'warn', note: 'Missing (legacy header)' };
         if (v.startsWith('1; mode=block')) return { pass: true, note: v };
-        if (v === '0') return { pass: 'warn', note: 'Disabled' };
-        return { pass: 'warn', note: v };
+        return { pass: 'warn', note: v === '0' ? 'Disabled' : v };
       }
     },
     {
-      key: 'cache-control',
-      label: 'Cache-Control',
-      weight: 5,
-      grade: (v) => v
-        ? { pass: true, note: v }
-        : { pass: 'warn', note: 'Not set' }
+      key: 'cache-control', label: 'Cache-Control', weight: 5,
+      fix: 'add_header Cache-Control "no-store, no-cache, must-revalidate" always;',
+      grade: (v) => v ? { pass: true, note: v } : { pass: 'warn', note: 'Not set' }
     }
   ];
 
-  let score = 0;
-  let maxScore = 0;
+  let score = 0, maxScore = 0;
   const results = [];
 
   for (const check of checks) {
@@ -233,72 +282,57 @@ function analyzeSecurityHeaders(headers) {
     const result = check.grade(val);
     if (result.pass === true) score += check.weight;
     else if (result.pass === 'warn') score += check.weight * 0.5;
-    results.push({ label: check.label, pass: result.pass, note: result.note, present: !!val });
+    results.push({
+      label: check.label,
+      pass: result.pass,
+      note: result.note,
+      present: !!val,
+      fix: result.pass !== true ? check.fix : null
+    });
   }
 
   const pct = Math.round((score / maxScore) * 100);
-  let grade;
-  if (pct >= 90) grade = 'A';
-  else if (pct >= 75) grade = 'B';
-  else if (pct >= 55) grade = 'C';
-  else if (pct >= 35) grade = 'D';
-  else grade = 'F';
-
+  const grade = pct >= 90 ? 'A' : pct >= 75 ? 'B' : pct >= 55 ? 'C' : pct >= 35 ? 'D' : 'F';
   return { grade, score: pct, checks: results };
 }
 
+// ── WAF Detection ─────────────────────────────────────────────────────────────
 function detectWAF(headers, probeResult) {
-  const h = headers;
-  const ph = probeResult.headers || {};
-  const allHeaders = { ...h, ...ph };
+  const allHeaders = { ...headers, ...(probeResult.headers || {}) };
   const headerStr = JSON.stringify(allHeaders).toLowerCase();
-
   const signatures = [
     { name: 'Cloudflare', keys: ['cf-ray', 'cf-cache-status', 'cf-request-id'], server: 'cloudflare' },
     { name: 'AWS WAF / CloudFront', keys: ['x-amz-cf-id', 'x-amz-request-id'], server: null },
     { name: 'Sucuri', keys: ['x-sucuri-id', 'x-sucuri-cache'], server: 'sucuri' },
     { name: 'Imperva / Incapsula', keys: ['x-iinfo', 'x-cdn'], server: 'incapsula' },
     { name: 'Akamai', keys: ['x-akamai-transformed', 'akamai-origin-hop'], server: 'akamaighost' },
-    { name: 'F5 BIG-IP', keys: ['x-wa-info', 'x-cnection', 'x-forwarded-for'], server: 'big-ip' },
+    { name: 'F5 BIG-IP', keys: ['x-wa-info', 'x-cnection'], server: 'big-ip' },
     { name: 'Barracuda WAF', keys: ['barra_counter_session', 'bwce'], server: null },
     { name: 'Fastly', keys: ['x-fastly-request-id', 'x-served-by'], server: 'fastly' },
-    { name: 'Nginx (with ModSecurity)', keys: [], server: null, pattern: 'mod_security' },
-    { name: 'Nginx Proxy Manager', keys: [], server: 'nginx', pattern: null }
+    { name: 'Nginx (with ModSecurity)', keys: [], server: null, pattern: 'mod_security' }
   ];
-
-  const blocked = probeResult.status === 403 || probeResult.status === 406 ||
-    probeResult.status === 429 || probeResult.status === 444 || probeResult.status === 400;
-
+  const blocked = [403, 406, 429, 444, 400].includes(probeResult.status);
   let detected = null;
   for (const sig of signatures) {
     const keyMatch = sig.keys.some(k => allHeaders[k] !== undefined);
-    const serverVal = (allHeaders['server'] || '').toLowerCase();
-    const serverMatch = sig.server && serverVal.includes(sig.server);
+    const serverMatch = sig.server && (allHeaders['server'] || '').toLowerCase().includes(sig.server);
     const patternMatch = sig.pattern && headerStr.includes(sig.pattern);
-    if (keyMatch || serverMatch || patternMatch) {
-      detected = sig.name;
-      break;
-    }
+    if (keyMatch || serverMatch || patternMatch) { detected = sig.name; break; }
   }
-
   return {
     detected: !!detected || blocked,
     name: detected || (blocked ? 'Unknown WAF (probe blocked)' : null),
     probeBlocked: blocked,
     probeStatus: probeResult.status,
-    confidence: detected ? 'high' : (blocked ? 'medium' : 'none')
+    confidence: detected ? 'high' : blocked ? 'medium' : 'none'
   };
 }
 
+// ── Server Info ───────────────────────────────────────────────────────────────
 function analyzeServer(headers, ip) {
   const server = headers['server'] || 'Unknown';
-  const powered = headers['x-powered-by'] || null;
-  const via = headers['via'] || null;
-  const httpVersion = headers[':status'] ? 'HTTP/2' : 'HTTP/1.1';
-
-  // Detect server software
-  let software = 'Unknown';
   const sl = server.toLowerCase();
+  let software = 'Unknown';
   if (sl.includes('nginx')) software = 'Nginx';
   else if (sl.includes('apache')) software = 'Apache';
   else if (sl.includes('iis')) software = 'Microsoft IIS';
@@ -307,22 +341,26 @@ function analyzeServer(headers, ip) {
   else if (sl.includes('litespeed')) software = 'LiteSpeed';
   else if (sl.includes('caddy')) software = 'Caddy';
   else if (server !== 'Unknown') software = server;
-
-  return {
-    raw: server,
-    software,
-    poweredBy: powered,
-    via,
-    ip: ip || 'Unknown'
-  };
+  return { raw: server, software, poweredBy: headers['x-powered-by'] || null, via: headers['via'] || null, ip: ip || 'Unknown' };
 }
 
-// ── Full scan for one service ────────────────────────────────────────────────
+// ── Browser Support ───────────────────────────────────────────────────────────
+function buildBrowserNotes(tls12, tls13, http2) {
+  const notes = [];
+  if (tls13) notes.push('Modern browsers (TLS 1.3)');
+  if (tls12) notes.push('Legacy browsers (TLS 1.2)');
+  if (!tls12 && !tls13) notes.push('TLS not detected — may be HTTP only');
+  notes.push(http2 ? 'HTTP/2 supported' : 'HTTP/1.1 only');
+  if (tls13 && http2) notes.push('Chrome 70+, Firefox 63+, Safari 12.1+, Edge 79+');
+  else if (tls12) notes.push('Chrome 30+, Firefox 27+, Safari 7+, IE 11+');
+  return notes;
+}
+
+// ── Full Scan ─────────────────────────────────────────────────────────────────
 async function scanService(service) {
   const parsed = new URL(service.url);
   const host = parsed.hostname;
   const isHTTPS = parsed.protocol === 'https:';
-  // sslHost allows HTTP-only internal URLs to still check the public SSL cert
   const sslHost = service.sslHost || host;
   const checkSsl = isHTTPS || !!service.sslHost;
 
@@ -339,7 +377,7 @@ async function scanService(service) {
   const ip = dnsResult ? dnsResult.address : null;
   const headers = headersResult.ok ? headersResult.headers : {};
 
-  return {
+  const result = {
     name: service.name,
     url: service.url,
     scannedAt: new Date().toISOString(),
@@ -357,38 +395,63 @@ async function scanService(service) {
       notes: buildBrowserNotes(tls12.supported, tls13.supported, http2)
     }
   };
+
+  // Alerts: compare against last known state
+  const prev = history[service.url]?.[history[service.url].length - 1];
+  checkAlerts(prev, result);
+
+  appendHistory(result);
+  return result;
 }
 
-function buildBrowserNotes(tls12, tls13, http2) {
-  const notes = [];
-  if (tls13) notes.push('Modern browsers (TLS 1.3)');
-  if (tls12) notes.push('Legacy browsers (TLS 1.2)');
-  if (!tls12 && !tls13) notes.push('TLS not detected — may be HTTP only');
-  if (http2) notes.push('HTTP/2 supported');
-  else notes.push('HTTP/1.1 only');
+// ── In-memory cache ───────────────────────────────────────────────────────────
+const cache = {};
 
-  // Browser compatibility
-  if (tls13 && http2) notes.push('Chrome 70+, Firefox 63+, Safari 12.1+, Edge 79+');
-  else if (tls12) notes.push('Chrome 30+, Firefox 27+, Safari 7+, IE 11+');
-  return notes;
-}
-
-// ── HTTP Server ──────────────────────────────────────────────────────────────
+// ── HTTP Server ───────────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
 
-  const cors = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-    'Content-Type': 'application/json'
-  };
+  const json = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS', 'Content-Type': 'application/json' };
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, cors);
-    res.end();
+  if (req.method === 'OPTIONS') { res.writeHead(204, json); res.end(); return; }
+
+  // ── Public routes (no auth) ──
+  if (pathname === '/api/login' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { password } = JSON.parse(body);
+        if (!config.auth?.password) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'No password set' })); return; }
+        if (!verifyPassword(password, config.auth.password)) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Invalid password' })); return; }
+        res.writeHead(200, json);
+        res.end(JSON.stringify({ token: createSession() }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
+    });
     return;
   }
+
+  if (pathname === '/api/setup' && req.method === 'POST') {
+    if (config.auth?.password) { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Password already set' })); return; }
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { password } = JSON.parse(body);
+        if (!password || password.length < 8) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Password must be at least 8 characters' })); return; }
+        if (!config.auth) config.auth = {};
+        config.auth.password = hashPassword(password);
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        res.writeHead(200, json);
+        res.end(JSON.stringify({ token: createSession() }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
+  // ── Auth check for all other routes ──
+  const authed = validateSession(req);
 
   if (pathname === '/') {
     const html = fs.readFileSync(path.join(__dirname, 'index.html'));
@@ -397,8 +460,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === '/api/status') {
+    res.writeHead(200, json);
+    res.end(JSON.stringify({ passwordSet: !!config.auth?.password, authenticated: authed }));
+    return;
+  }
+
+  if (!authed) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
+
+  if (pathname === '/api/logout' && req.method === 'POST') {
+    const auth = req.headers['authorization'] || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+    if (token) sessions.delete(token);
+    res.writeHead(200, json); res.end(JSON.stringify({ ok: true })); return;
+  }
+
+  if (pathname === '/api/change-password' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { currentPassword, newPassword } = JSON.parse(body);
+        if (!verifyPassword(currentPassword, config.auth.password)) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Current password incorrect' })); return; }
+        if (!newPassword || newPassword.length < 8) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'New password must be at least 8 characters' })); return; }
+        config.auth.password = hashPassword(newPassword);
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        sessions.clear();
+        res.writeHead(200, json); res.end(JSON.stringify({ token: createSession() }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
   if (pathname === '/api/services' && req.method === 'GET') {
-    res.writeHead(200, cors);
+    res.writeHead(200, json);
     res.end(JSON.stringify(config.services.map(s => ({ name: s.name, url: s.url, sslHost: s.sslHost || null }))));
     return;
   }
@@ -409,29 +504,17 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const { name, url: serviceUrl, sslHost } = JSON.parse(body);
-        if (!name || !serviceUrl) {
-          res.writeHead(400, cors);
-          res.end(JSON.stringify({ error: 'name and url are required' }));
-          return;
-        }
-        new URL(serviceUrl); // validate URL
-        if (config.services.find(s => s.url === serviceUrl)) {
-          res.writeHead(409, cors);
-          res.end(JSON.stringify({ error: 'Service with this URL already exists' }));
-          return;
-        }
+        if (!name || !serviceUrl) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'name and url are required' })); return; }
+        new URL(serviceUrl);
+        if (config.services.find(s => s.url === serviceUrl)) { res.writeHead(409, json); res.end(JSON.stringify({ error: 'Service with this URL already exists' })); return; }
         const service = { name, url: serviceUrl };
         if (sslHost) service.sslHost = sslHost;
         config.services.push(service);
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
         const result = await scanService(service);
         cache[service.url] = result;
-        res.writeHead(201, cors);
-        res.end(JSON.stringify(result));
-      } catch (e) {
-        res.writeHead(400, cors);
-        res.end(JSON.stringify({ error: e.message }));
-      }
+        res.writeHead(201, json); res.end(JSON.stringify(result));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
     });
     return;
   }
@@ -443,28 +526,20 @@ const server = http.createServer(async (req, res) => {
       try {
         const { url: serviceUrl } = JSON.parse(body);
         const idx = config.services.findIndex(s => s.url === serviceUrl);
-        if (idx === -1) {
-          res.writeHead(404, cors);
-          res.end(JSON.stringify({ error: 'Service not found' }));
-          return;
-        }
+        if (idx === -1) { res.writeHead(404, json); res.end(JSON.stringify({ error: 'Service not found' })); return; }
         config.services.splice(idx, 1);
         delete cache[serviceUrl];
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-        res.writeHead(200, cors);
-        res.end(JSON.stringify({ ok: true }));
-      } catch (e) {
-        res.writeHead(400, cors);
-        res.end(JSON.stringify({ error: e.message }));
-      }
+        res.writeHead(200, json); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
     });
     return;
   }
 
   if (pathname === '/api/scan/all') {
-    res.writeHead(200, cors);
+    res.writeHead(200, json);
     const results = await Promise.all(config.services.map(s => {
-      cache[s.url] = null; // invalidate
+      cache[s.url] = null;
       return scanService(s).then(r => { cache[s.url] = r; return r; });
     }));
     res.end(JSON.stringify(results));
@@ -474,12 +549,8 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/scan') {
     const target = parsed.query.url;
     const service = config.services.find(s => s.url === target);
-    if (!service) {
-      res.writeHead(404, cors);
-      res.end(JSON.stringify({ error: 'Service not found' }));
-      return;
-    }
-    res.writeHead(200, cors);
+    if (!service) { res.writeHead(404, json); res.end(JSON.stringify({ error: 'Service not found' })); return; }
+    res.writeHead(200, json);
     const result = await scanService(service);
     cache[service.url] = result;
     res.end(JSON.stringify(result));
@@ -487,25 +558,29 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/api/results') {
-    res.writeHead(200, cors);
+    res.writeHead(200, json);
     res.end(JSON.stringify(Object.values(cache).filter(Boolean)));
     return;
   }
 
-  res.writeHead(404, cors);
+  if (pathname === '/api/history') {
+    res.writeHead(200, json);
+    res.end(JSON.stringify(history));
+    return;
+  }
+
+  res.writeHead(404, json);
   res.end(JSON.stringify({ error: 'Not found' }));
 });
 
-const PORT = config.port || 3001;
+const PORT = config.port || 3002;
 server.listen(PORT, () => {
   console.log(`SecureScout running on http://localhost:${PORT}`);
-  // Initial scan
   console.log('Running initial scan...');
   Promise.all(config.services.map(s => scanService(s).then(r => { cache[s.url] = r; })))
     .then(() => console.log('Initial scan complete.'));
 });
 
-// Auto-rescan
 if (config.scanIntervalMinutes > 0) {
   setInterval(() => {
     config.services.forEach(s => scanService(s).then(r => { cache[s.url] = r; }));
