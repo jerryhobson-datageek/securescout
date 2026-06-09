@@ -21,6 +21,11 @@
       "name": "SecureScout",
       "host": "security.newtekk.com",
       "url": "https://security.newtekk.com"
+    },
+    {
+      "name": "PulseWatch",
+      "host": "plusewatch.newtekk.com",
+      "url": "https://plusewatch.newtekk.com"
     }
   ]
 }
