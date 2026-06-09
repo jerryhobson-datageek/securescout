@@ -7,12 +7,16 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 ## Screenshots
 
 ![Dashboard](docs/screenshots/02_dashboard.png)
+*6 services monitored — SSL, WAF, security headers graded A–F, sparkline history per service*
 
 ![Fix Recommendations](docs/screenshots/03_fix_recommendation.png)
+*Click any failing header to expand a copy-ready Nginx directive*
 
 ![Login](docs/screenshots/01_login.png)
+*Password-protected — scrypt-hashed, 24hr session tokens*
 
 ![Add Site](docs/screenshots/04_add_site_modal.png)
+*Add any service on the fly — scans immediately and persists to config*
 
 ## Features
 
