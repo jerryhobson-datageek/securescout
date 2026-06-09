@@ -5,8 +5,7 @@
     {
       "name": "Nginx Proxy Manager",
       "host": "proxy.newtekk.com",
-      "url": "http://localhost:80",
-      "sslHost": "proxymanager.newtekk.com"
+      "url": "https://proxymanager.newtekk.com"
     },
     {
       "name": "Portainer",
