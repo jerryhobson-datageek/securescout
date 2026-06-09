@@ -135,7 +135,7 @@ function probeWAF(targetUrl) {
     const req = lib.request({
       hostname: parsed.hostname,
       port,
-      path: '/?q=<script>alert(1)</script>&id=1 UNION SELECT 1--',
+      path: '/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E&id=1%20UNION%20SELECT%201--',
       method: 'GET',
       rejectUnauthorized: false,
       headers: { 'User-Agent': 'Mozilla/5.0 (SecureScout/1.0)', 'Accept': '*/*' }
