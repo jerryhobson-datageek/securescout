@@ -160,6 +160,87 @@ function checkSSL(host, port = 443) {
   });
 }
 
+// ── DNS Security Check ────────────────────────────────────────────────────────
+function dohQuery(host, type) {
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: 'cloudflare-dns.com',
+      path: `/dns-query?name=${encodeURIComponent(host)}&type=${type}`,
+      method: 'GET',
+      headers: { 'Accept': 'application/dns-json' }
+    }, (res) => {
+      let body = '';
+      res.on('data', d => { body += d; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(6000, () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+
+function apexDomain(host) {
+  const parts = host.split('.');
+  return parts.length > 2 ? parts.slice(-2).join('.') : host;
+}
+
+async function checkDNS(host) {
+  const apex = apexDomain(host);
+
+  // CAA: try the specific host first, fall back to apex
+  async function resolveCaaWithFallback() {
+    const r = await dns.resolveCaa(host).catch(() => []);
+    if (r.length) return r;
+    return dns.resolveCaa(apex).catch(() => []);
+  }
+
+  const [aRec, caaRec, nsRec, txtRec, dsResult, dnskeyResult] = await Promise.allSettled([
+    dns.resolve4(host).catch(() => []),
+    resolveCaaWithFallback(),
+    dns.resolveNs(apex).catch(() => []),
+    dns.resolveTxt(apex).catch(() => []),
+    dohQuery(host, 'DS'),
+    dohQuery(host, 'DNSKEY')
+  ]);
+
+  const ips       = aRec.status       === 'fulfilled' ? aRec.value       : [];
+  const caa       = caaRec.status     === 'fulfilled' ? caaRec.value     : [];
+  const ns        = nsRec.status      === 'fulfilled' ? nsRec.value      : [];
+  const txt       = txtRec.status     === 'fulfilled' ? txtRec.value.flat() : [];
+  const dsData    = dsResult.status   === 'fulfilled' ? dsResult.value   : null;
+  const dnskeyData = dnskeyResult.status === 'fulfilled' ? dnskeyResult.value : null;
+
+  // DNSSEC: AD flag = Authenticated Data, or DS records present
+  const dnssecEnabled = !!(
+    dsData?.AD ||
+    dnskeyData?.AD ||
+    (dsData?.Answer?.length > 0) ||
+    (dnskeyData?.Answer?.length > 0)
+  );
+
+  // CAA: surface which issuers are authorised
+  const caaIssuers = caa
+    .filter(r => r.issue || r.issuewild)
+    .map(r => r.issue || r.issuewild)
+    .filter(Boolean)
+    .filter(v => v.trim() !== ';');
+
+  // SPF
+  const spf = txt.find(t => t.startsWith('v=spf1')) || null;
+
+  return {
+    ok: true,
+    ips,
+    nameservers: ns.sort(),
+    caaPresent: caa.length > 0,
+    caaIssuers,
+    dnssecEnabled,
+    spf
+  };
+}
+
 // ── TLS Version Probe ─────────────────────────────────────────────────────────
 function probeTLS(host, port, tlsVersion) {
   return new Promise((resolve) => {
@@ -364,17 +445,17 @@ async function scanService(service) {
   const sslHost = service.sslHost || host;
   const checkSsl = isHTTPS || !!service.sslHost;
 
-  const [ssl, headersResult, probeResult, tls12, tls13, http2, dnsResult] = await Promise.all([
+  const [ssl, headersResult, probeResult, tls12, tls13, http2, dnsChecks] = await Promise.all([
     checkSsl ? checkSSL(sslHost) : Promise.resolve({ ok: false, error: 'Not HTTPS' }),
     fetchHeaders(service.url),
     probeWAF(service.url),
     checkSsl ? probeTLS(sslHost, 443, 'TLSv1.2') : Promise.resolve({ supported: false }),
     checkSsl ? probeTLS(sslHost, 443, 'TLSv1.3') : Promise.resolve({ supported: false }),
     checkSsl ? probeHTTP2(sslHost) : Promise.resolve(false),
-    dns.lookup(sslHost).catch(() => null)
+    checkDNS(sslHost)
   ]);
 
-  const ip = dnsResult ? dnsResult.address : null;
+  const ip = dnsChecks.ips?.[0] || null;
   const headers = headersResult.ok ? headersResult.headers : {};
 
   const result = {
@@ -385,6 +466,7 @@ async function scanService(service) {
     responseTime: headersResult.elapsed || null,
     httpStatus: headersResult.status || null,
     ssl,
+    dns: dnsChecks,
     securityHeaders: headersResult.ok ? analyzeSecurityHeaders(headers) : null,
     waf: headersResult.ok ? detectWAF(headers, probeResult) : null,
     server: headersResult.ok ? analyzeServer(headers, ip) : null,

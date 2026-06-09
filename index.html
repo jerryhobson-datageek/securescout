@@ -191,6 +191,17 @@
   .tls-info { background: rgba(96,165,250,0.1); color: var(--blue); border-color: rgba(96,165,250,0.3); }
   .browser-notes { font-size: 0.7rem; color: var(--muted); line-height: 1.6; }
 
+  /* DNS */
+  .dns-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 14px; }
+  .dns-tag {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 0.68rem; font-weight: 600; margin: 1px 2px 1px 0;
+  }
+  .dns-tag-ok  { background: rgba(74,222,128,0.12);  color: var(--green);  border: 1px solid rgba(74,222,128,0.3); }
+  .dns-tag-warn { background: rgba(251,191,36,0.12); color: var(--yellow); border: 1px solid rgba(251,191,36,0.3); }
+  .dns-tag-fail { background: rgba(248,113,113,0.12);color: var(--red);    border: 1px solid rgba(248,113,113,0.3); }
+  .dns-tag-info { background: rgba(96,165,250,0.12); color: var(--blue);   border: 1px solid rgba(96,165,250,0.3); }
+
   .skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; height: 13px; margin: 4px 0; }
   @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
@@ -468,7 +479,8 @@ function skeletonBody() {
     <div class="check-section"><div class="section-title">Security Headers</div><div class="skeleton"></div><div class="skeleton" style="width:80%"></div></div>
     <div class="check-section"><div class="section-title">WAF</div><div class="skeleton" style="width:60%"></div></div>
     <div class="check-section"><div class="section-title">Server Info</div><div class="skeleton"></div></div>
-    <div class="check-section"><div class="section-title">Browser Support</div><div class="skeleton" style="width:75%"></div></div>`;
+    <div class="check-section"><div class="section-title">Browser Support</div><div class="skeleton" style="width:75%"></div></div>
+    <div class="check-section"><div class="section-title">DNS Security</div><div class="skeleton"></div><div class="skeleton" style="width:65%"></div></div>`;
 }
 
 async function scanAll() {
@@ -530,7 +542,8 @@ function renderOneResult(r) {
     renderHeaders(r.securityHeaders, hist),
     renderWAF(r.waf),
     renderServer(r.server, r.responseTime, r.httpStatus),
-    renderBrowser(r.browserSupport)
+    renderBrowser(r.browserSupport),
+    renderDNS(r.dns)
   ].join('');
 }
 
@@ -625,6 +638,43 @@ function renderBrowser(b) {
       <span class="tls-chip ${b.http2?'tls-info':'tls-fail'}">HTTP/2 ${b.http2?'✓':'✗'}</span>
     </div>
     <div class="browser-notes">${b.notes?b.notes.join(' · '):''}</div>`);
+}
+
+function renderDNS(d) {
+  if (!d || !d.ok) return section('DNS Security', '<div class="error-msg">Not available</div>');
+
+  const dnssec = d.dnssecEnabled
+    ? `<span class="dns-tag dns-tag-ok">DNSSEC ✓</span>`
+    : `<span class="dns-tag dns-tag-warn">DNSSEC ✗</span>`;
+
+  const caa = d.caaPresent
+    ? `<span class="dns-tag dns-tag-ok">CAA ✓</span>`
+    : `<span class="dns-tag dns-tag-fail">CAA ✗</span>`;
+
+  const spf = d.spf
+    ? `<span class="dns-tag dns-tag-ok">SPF ✓</span>`
+    : `<span class="dns-tag dns-tag-warn">SPF ✗</span>`;
+
+  const badgesHTML = `<div style="margin-bottom:8px">${dnssec}${caa}${spf}</div>`;
+
+  const caaDetail = d.caaPresent
+    ? (d.caaIssuers.length ? d.caaIssuers.join(', ') : 'Present')
+    : 'Not set — any CA can issue certs';
+
+  const nsHtml = d.nameservers.length
+    ? d.nameservers.slice(0, 3).join('<br>') + (d.nameservers.length > 3 ? ` <span style="color:var(--muted)">+${d.nameservers.length-3} more</span>` : '')
+    : '—';
+
+  const ipHtml = d.ips.length ? d.ips.join(', ') : '—';
+
+  return section('DNS Security', `
+    ${badgesHTML}
+    <div class="dns-grid">
+      <div class="field"><div class="fl">IP Address(es)</div><div class="fv">${esc(ipHtml)}</div></div>
+      <div class="field"><div class="fl">Nameservers</div><div class="fv" style="font-size:0.72rem">${nsHtml}</div></div>
+      <div class="field"><div class="fl">CAA Issuers</div><div class="fv" style="font-size:0.72rem;color:${d.caaPresent?'var(--text)':'var(--yellow)'}">${esc(caaDetail)}</div></div>
+      ${d.spf ? `<div class="field"><div class="fl">SPF</div><div class="fv" style="font-size:0.68rem;word-break:break-all">${esc(d.spf)}</div></div>` : ''}
+    </div>`);
 }
 
 function section(title, inner) {
