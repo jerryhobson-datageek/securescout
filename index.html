@@ -227,6 +227,57 @@
 
   .error-msg { color: var(--red); font-size: 0.8rem; padding: 8px; }
 
+  /* Modal */
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    width: 100%;
+    max-width: 460px;
+    margin: 16px;
+  }
+  .modal h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+  .form-group input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    color: var(--text);
+    font-size: 0.88rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .form-group input:focus { border-color: var(--cyan); }
+  .form-group .hint { font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+  .modal-error { color: var(--red); font-size: 0.78rem; margin-top: 12px; min-height: 18px; }
+
+  /* Remove button on card */
+  .btn-remove {
+    background: none;
+    border: none;
+    color: var(--muted);
+    padding: 4px 6px;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .btn-remove:hover { color: var(--red); background: rgba(248,113,113,0.1); }
+
   .spinner {
     display: inline-block;
     width: 14px; height: 14px;
@@ -249,6 +300,32 @@
 </head>
 <body>
 
+<!-- Add Site Modal -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="handleBackdropClick(event)">
+  <div class="modal">
+    <h2>Add Site</h2>
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" id="addName" placeholder="My Service" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>URL</label>
+      <input type="url" id="addUrl" placeholder="https://example.com" autocomplete="off">
+      <div class="hint">The URL SecureScout will connect to for checks.</div>
+    </div>
+    <div class="form-group">
+      <label>SSL Host <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <input type="text" id="addSslHost" placeholder="example.com" autocomplete="off">
+      <div class="hint">Only needed if the URL is HTTP but you want to check an SSL cert on a different hostname (e.g. internal services behind a proxy).</div>
+    </div>
+    <div class="modal-error" id="modalError"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" id="btnAddSubmit" onclick="submitAdd()">Add &amp; Scan</button>
+    </div>
+  </div>
+</div>
+
 <header>
   <div class="logo">
     <span class="logo-icon">🛡️</span>
@@ -257,6 +334,7 @@
   <div class="header-right">
     <span class="last-scan" id="lastScan">—</span>
     <button class="btn-secondary btn-scan-single" id="btnRefresh" onclick="scanAll()">↻ Refresh</button>
+    <button class="btn-secondary" onclick="openModal()">+ Add Site</button>
     <button class="btn-primary" id="btnScanAll" onclick="scanAll()">Scan All</button>
   </div>
 </header>
@@ -321,6 +399,7 @@ function renderCards(svcs) {
             — Pending
           </span>
           <button class="btn-secondary btn-scan-single" onclick="scanOne('${s.url}')">Scan</button>
+          <button class="btn-remove" title="Remove site" onclick="removeSite('${s.url}', '${esc(s.name)}')">✕</button>
         </div>
       </div>
       <div class="card-body" id="body-${btoa(s.url)}">
@@ -547,6 +626,109 @@ function esc(s) {
 function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('addName').value = '';
+  document.getElementById('addUrl').value = '';
+  document.getElementById('addSslHost').value = '';
+  document.getElementById('modalError').textContent = '';
+  document.getElementById('modalBackdrop').classList.add('open');
+  document.getElementById('addName').focus();
+}
+
+function closeModal() {
+  document.getElementById('modalBackdrop').classList.remove('open');
+}
+
+function handleBackdropClick(e) {
+  if (e.target === document.getElementById('modalBackdrop')) closeModal();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+async function submitAdd() {
+  const name = document.getElementById('addName').value.trim();
+  const url = document.getElementById('addUrl').value.trim();
+  const sslHost = document.getElementById('addSslHost').value.trim();
+  const errEl = document.getElementById('modalError');
+  const btn = document.getElementById('btnAddSubmit');
+
+  if (!name) { errEl.textContent = 'Name is required.'; return; }
+  if (!url) { errEl.textContent = 'URL is required.'; return; }
+  try { new URL(url); } catch { errEl.textContent = 'Invalid URL.'; return; }
+
+  errEl.textContent = '';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Scanning…';
+
+  try {
+    const body = { name, url };
+    if (sslHost) body.sslHost = sslHost;
+
+    const res = await fetch('/api/services', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Failed to add site.';
+      return;
+    }
+
+    // Add to local list and render
+    services.push({ name, url, sslHost: sslHost || null });
+    results[url] = data;
+    closeModal();
+
+    // Append card to grid
+    const grid = document.getElementById('servicesGrid');
+    const tmp = document.createElement('div');
+    tmp.innerHTML = `
+      <div class="service-card" id="card-${btoa(url)}">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${esc(name)}</div>
+            <div class="card-url">${esc(url)}</div>
+          </div>
+          <div class="card-actions">
+            <span class="card-status-badge badge-scanning" id="badge-${btoa(url)}">— Pending</span>
+            <button class="btn-secondary btn-scan-single" onclick="scanOne('${url}')">Scan</button>
+            <button class="btn-remove" title="Remove site" onclick="removeSite('${url}', '${esc(name)}')">✕</button>
+          </div>
+        </div>
+        <div class="card-body" id="body-${btoa(url)}">${skeletonBody()}</div>
+      </div>`;
+    grid.appendChild(tmp.firstElementChild);
+    renderOneResult(data);
+    updateSummary();
+  } catch (e) {
+    errEl.textContent = 'Network error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add & Scan';
+  }
+}
+
+async function removeSite(url, name) {
+  if (!confirm(`Remove "${name}" from SecureScout?`)) return;
+  const res = await fetch('/api/services', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url })
+  });
+  if (res.ok) {
+    services = services.filter(s => s.url !== url);
+    delete results[url];
+    const card = document.getElementById('card-' + btoa(url));
+    if (card) card.remove();
+    updateSummary();
+  }
 }
 
 init();

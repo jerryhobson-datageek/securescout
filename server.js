@@ -380,9 +380,15 @@ const server = http.createServer(async (req, res) => {
 
   const cors = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Content-Type': 'application/json'
   };
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, cors);
+    res.end();
+    return;
+  }
 
   if (pathname === '/') {
     const html = fs.readFileSync(path.join(__dirname, 'index.html'));
@@ -391,9 +397,67 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/api/services') {
+  if (pathname === '/api/services' && req.method === 'GET') {
     res.writeHead(200, cors);
-    res.end(JSON.stringify(config.services.map(s => ({ name: s.name, url: s.url }))));
+    res.end(JSON.stringify(config.services.map(s => ({ name: s.name, url: s.url, sslHost: s.sslHost || null }))));
+    return;
+  }
+
+  if (pathname === '/api/services' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', async () => {
+      try {
+        const { name, url: serviceUrl, sslHost } = JSON.parse(body);
+        if (!name || !serviceUrl) {
+          res.writeHead(400, cors);
+          res.end(JSON.stringify({ error: 'name and url are required' }));
+          return;
+        }
+        new URL(serviceUrl); // validate URL
+        if (config.services.find(s => s.url === serviceUrl)) {
+          res.writeHead(409, cors);
+          res.end(JSON.stringify({ error: 'Service with this URL already exists' }));
+          return;
+        }
+        const service = { name, url: serviceUrl };
+        if (sslHost) service.sslHost = sslHost;
+        config.services.push(service);
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        const result = await scanService(service);
+        cache[service.url] = result;
+        res.writeHead(201, cors);
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(400, cors);
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (pathname === '/api/services' && req.method === 'DELETE') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { url: serviceUrl } = JSON.parse(body);
+        const idx = config.services.findIndex(s => s.url === serviceUrl);
+        if (idx === -1) {
+          res.writeHead(404, cors);
+          res.end(JSON.stringify({ error: 'Service not found' }));
+          return;
+        }
+        config.services.splice(idx, 1);
+        delete cache[serviceUrl];
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        res.writeHead(200, cors);
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.writeHead(400, cors);
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
     return;
   }
 
