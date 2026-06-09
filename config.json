@@ -16,6 +16,11 @@
       "name": "WireGuard Easy",
       "host": "vpn.newtekk.com",
       "url": "https://vpn.newtekk.com"
+    },
+    {
+      "name": "SecureScout",
+      "host": "security.newtekk.com",
+      "url": "https://security.newtekk.com"
     }
   ]
 }
