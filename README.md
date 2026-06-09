@@ -2,7 +2,17 @@
 
 A self-hosted security dashboard for monitoring your web services. Checks SSL certificates, security headers, WAF detection, server info, and browser support — all from a single page.
 
-![SecureScout Dashboard](https://img.shields.io/badge/Node.js-20+-green) ![License](https://img.shields.io/badge/license-MIT-blue) ![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+![Node.js](https://img.shields.io/badge/Node.js-20+-green) ![License](https://img.shields.io/badge/license-MIT-blue) ![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+
+## Screenshots
+
+![Dashboard](docs/screenshots/02_dashboard.png)
+
+![Fix Recommendations](docs/screenshots/03_fix_recommendation.png)
+
+![Login](docs/screenshots/01_login.png)
+
+![Add Site](docs/screenshots/04_add_site_modal.png)
 
 ## Features
 
@@ -11,6 +21,10 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 - **WAF Detection** — fingerprints Cloudflare, AWS WAF, Sucuri, Imperva, Akamai, F5 BIG-IP, Barracuda, Fastly; fires a live XSS + SQLi probe to test blocking
 - **Server Info** — software, IP address, HTTP status, response time, X-Powered-By
 - **Browser Support** — TLS 1.2/1.3 and HTTP/2 probed directly, with human-readable compatibility notes
+- **Fix Recommendations** — click any failing header to expand a copy-ready Nginx directive
+- **Scan History** — grade sparkline per service showing trend across last 15 scans
+- **Discord Alerts** — notifies on site down/up, SSL expiry < 30 days, header grade drop
+- **Password Protection** — scrypt-hashed password with 24hr session tokens
 
 ## Tech Stack
 
@@ -35,11 +49,16 @@ Edit `config.json`:
 {
   "port": 3002,
   "scanIntervalMinutes": 60,
+  "discordWebhook": "",
   "services": [
     {
       "name": "My Site",
-      "host": "example.com",
       "url": "https://example.com"
+    },
+    {
+      "name": "Internal Service",
+      "url": "http://localhost:8080",
+      "sslHost": "example.com"
     }
   ]
 }
@@ -48,8 +67,10 @@ Edit `config.json`:
 | Field | Description |
 |---|---|
 | `port` | Port the dashboard listens on |
-| `scanIntervalMinutes` | How often to auto-rescan (0 = disabled) |
-| `services` | List of services to monitor |
+| `scanIntervalMinutes` | Auto-rescan interval in minutes (0 = disabled) |
+| `discordWebhook` | Discord webhook URL for alerts (optional) |
+| `services[].url` | URL SecureScout connects to for checks |
+| `services[].sslHost` | Override hostname for SSL check (useful for internal/proxied URLs) |
 
 ### 3. Run
 
@@ -57,16 +78,16 @@ Edit `config.json`:
 node server.js
 ```
 
-Open `http://localhost:3002` in your browser.
+Open `http://localhost:3002` in your browser. On first visit you will be prompted to set a password.
 
 ## Deployment (systemd)
 
 ```bash
-# Copy files
+# Copy files to running directory
 cp server.js index.html /opt/securescout/
-# config.json — copy only on first deploy, do not overwrite
+# config.json — copy only on first deploy, never overwrite
 
-# Create service
+# Create systemd service
 cat > /etc/systemd/system/securescout.service << EOF
 [Unit]
 Description=SecureScout Security Dashboard
@@ -88,33 +109,64 @@ systemctl daemon-reload
 systemctl enable --now securescout
 ```
 
-## Running Behind a Reverse Proxy (Nginx Proxy Manager)
+## Running Behind Nginx Proxy Manager (Docker)
 
-If NPM runs in Docker, use the Docker bridge gateway IP instead of `localhost` as the forward host:
+If NPM runs in Docker, `localhost` inside the container refers to the container itself — use the Docker bridge gateway IP to reach the host:
 
 ```
 Forward Host: 172.17.0.1
 Forward Port: 3002
 ```
 
-Enable SSL, force HTTPS, and turn on HTTP/2 in the NPM proxy host settings.
+If the service URL loops back through NPM (causing a 502), set the URL to the internal address and use `sslHost` to still check the public SSL cert:
+
+```json
+{
+  "name": "Nginx Proxy Manager",
+  "url": "http://localhost:80",
+  "sslHost": "proxymanager.newtekk.com"
+}
+```
+
+## Discord Alerts
+
+Add your webhook URL to `config.json`:
+
+```json
+"discordWebhook": "https://discord.com/api/webhooks/..."
+```
+
+Alerts fire when:
+- A site goes **down** or comes back **up**
+- An SSL cert crosses below **30 days** remaining
+- A security header **grade drops** (e.g. C → F)
 
 ## API Endpoints
 
-| Endpoint | Description |
-|---|---|
-| `GET /` | Dashboard UI |
-| `GET /api/services` | List configured services |
-| `GET /api/scan/all` | Trigger a full scan of all services |
-| `GET /api/scan?url=<url>` | Scan a single service |
-| `GET /api/results` | Return cached scan results |
+All endpoints except `/api/login`, `/api/setup`, and `/api/status` require a valid `Authorization: Bearer <token>` header.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `GET /` | GET | Dashboard UI |
+| `GET /api/status` | GET | Auth status (passwordSet, authenticated) |
+| `POST /api/setup` | POST | Set initial password (first run only) |
+| `POST /api/login` | POST | Authenticate and get session token |
+| `POST /api/logout` | POST | Invalidate session token |
+| `POST /api/change-password` | POST | Change password |
+| `GET /api/services` | GET | List configured services |
+| `POST /api/services` | POST | Add a service and trigger scan |
+| `DELETE /api/services` | DELETE | Remove a service |
+| `GET /api/scan/all` | GET | Scan all services |
+| `GET /api/scan?url=` | GET | Scan a single service |
+| `GET /api/results` | GET | Return cached scan results |
+| `GET /api/history` | GET | Return scan history (last 30 per service) |
 
 ## WAF Detection Method
 
 SecureScout uses two techniques:
 
-1. **Header fingerprinting** — checks response headers for known WAF signatures (e.g. `CF-Ray` for Cloudflare, `X-Sucuri-ID` for Sucuri)
-2. **Probe request** — sends a request with a URL-encoded XSS + SQLi payload and checks if the response is blocked (HTTP 403/406/429/444)
+1. **Header fingerprinting** — checks response headers for known WAF signatures (e.g. `CF-Ray` for Cloudflare, `X-Sucuri-ID` for Sucuri, `X-Served-By` for Fastly)
+2. **Probe request** — sends a URL-encoded XSS + SQLi payload and checks if the response is blocked (HTTP 403/406/429/444)
 
 ## License
 
