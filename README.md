@@ -10,7 +10,10 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 *5 services monitored — SSL, WAF, security headers graded A–F, sparkline history per service*
 
 ![DNS Security](docs/screenshots/05_dns_dmarc.png)
-*DNS Security section — DNSSEC, CAA, SPF, and DMARC badges with policy detail*
+*DNS Security section — DNSSEC, CAA, SPF, DMARC badges, and DKIM selector checker*
+
+![DKIM Check](docs/screenshots/06_dkim_check.png)
+*DKIM check — enter a selector, result shows the full public key record inline*
 
 ![Fix Recommendations](docs/screenshots/03_fix_recommendation.png)
 *Click any failing header to expand a copy-ready Nginx directive*
@@ -26,7 +29,7 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 - **SSL Certificate** — expiry countdown, issuer, cipher suite, protocol, self-signed detection
 - **Security Headers** — grades A–F across 8 headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, X-XSS-Protection, Cache-Control)
 - **WAF Detection** — fingerprints Cloudflare, AWS WAF, Sucuri, Imperva, Akamai, F5 BIG-IP, Barracuda, Fastly; fires a live XSS + SQLi probe to test blocking
-- **DNS Security** — DNSSEC, CAA issuers, SPF, and DMARC (policy: reject/quarantine/none) with per-record detail
+- **DNS Security** — DNSSEC, CAA issuers, SPF, DMARC (policy: reject/quarantine/none), and on-demand DKIM selector lookup
 - **Server Info** — software, IP address, HTTP status, response time, X-Powered-By
 - **Browser Support** — TLS 1.2/1.3 and HTTP/2 probed directly, with human-readable compatibility notes
 - **Fix Recommendations** — click any failing header to expand a copy-ready Nginx directive
