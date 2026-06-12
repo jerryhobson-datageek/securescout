@@ -202,6 +202,18 @@
   .dns-tag-fail { background: rgba(248,113,113,0.12);color: var(--red);    border: 1px solid rgba(248,113,113,0.3); }
   .dns-tag-info { background: rgba(96,165,250,0.12); color: var(--blue);   border: 1px solid rgba(96,165,250,0.3); }
 
+  .cookie-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 0.73rem; }
+  .cookie-row:last-child { border-bottom: none; }
+  .cookie-name { font-family: 'Consolas', monospace; color: var(--text); font-size: 0.72rem; }
+  .cookie-name.session { color: var(--cyan); }
+  .cookie-flags { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .flag { padding: 1px 6px; border-radius: 8px; font-size: 0.65rem; font-weight: 600; border: 1px solid; }
+  .flag-ok   { background: rgba(74,222,128,0.1);  color: var(--green);  border-color: rgba(74,222,128,0.3); }
+  .flag-fail { background: rgba(248,113,113,0.1); color: var(--red);    border-color: rgba(248,113,113,0.3); }
+  .flag-warn { background: rgba(251,191,36,0.1);  color: var(--yellow); border-color: rgba(251,191,36,0.3); }
+  .flag-info { background: rgba(96,165,250,0.1);  color: var(--blue);   border-color: rgba(96,165,250,0.3); }
+  .no-cookies { font-size: 0.72rem; color: var(--muted); font-style: italic; }
+
   .dkim-check { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
   .dkim-check input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; color: var(--text); font-size: 0.78rem; outline: none; font-family: 'Consolas', monospace; }
   .dkim-check input:focus { border-color: var(--cyan); }
@@ -486,6 +498,7 @@ function skeletonBody() {
     <div class="check-section"><div class="section-title">SSL Certificate</div><div class="skeleton"></div><div class="skeleton" style="width:70%"></div></div>
     <div class="check-section"><div class="section-title">Security Headers</div><div class="skeleton"></div><div class="skeleton" style="width:80%"></div></div>
     <div class="check-section"><div class="section-title">WAF</div><div class="skeleton" style="width:60%"></div></div>
+    <div class="check-section"><div class="section-title">Cookie Security</div><div class="skeleton" style="width:70%"></div></div>
     <div class="check-section"><div class="section-title">Server Info</div><div class="skeleton"></div></div>
     <div class="check-section"><div class="section-title">Browser Support</div><div class="skeleton" style="width:75%"></div></div>
     <div class="check-section"><div class="section-title">DNS Security</div><div class="skeleton"></div><div class="skeleton" style="width:65%"></div></div>`;
@@ -549,6 +562,7 @@ function renderOneResult(r) {
     renderSSL(r.ssl),
     renderHeaders(r.securityHeaders, hist),
     renderWAF(r.waf),
+    renderCookies(r.cookies),
     renderServer(r.server, r.responseTime, r.httpStatus),
     renderBrowser(r.browserSupport),
     renderDNS(r.dns, r.url)
@@ -646,6 +660,28 @@ function renderBrowser(b) {
       <span class="tls-chip ${b.http2?'tls-info':'tls-fail'}">HTTP/2 ${b.http2?'✓':'✗'}</span>
     </div>
     <div class="browser-notes">${b.notes?b.notes.join(' · '):''}</div>`);
+}
+
+function renderCookies(c) {
+  if (!c) return section('Cookie Security', '<div class="error-msg">Not available</div>');
+  if (c.count === 0) return section('Cookie Security', '<div class="no-cookies">No Set-Cookie headers on homepage response</div>');
+
+  const rows = c.cookies.map(ck => {
+    const nameClass = ck.sessionLike ? 'cookie-name session' : 'cookie-name';
+    const secFlag   = `<span class="flag ${ck.secure   ? 'flag-ok' : 'flag-fail'}">${ck.secure   ? 'Secure ✓' : 'Secure ✗'}</span>`;
+    const hoFlag    = `<span class="flag ${ck.httpOnly ? 'flag-ok' : 'flag-fail'}">${ck.httpOnly ? 'HttpOnly ✓' : 'HttpOnly ✗'}</span>`;
+    const ssColor   = !ck.sameSite ? 'flag-fail' : ck.sameSite === 'strict' ? 'flag-ok' : ck.sameSite === 'lax' ? 'flag-warn' : 'flag-fail';
+    const ssLabel   = ck.sameSite ? 'SameSite=' + ck.sameSite.charAt(0).toUpperCase() + ck.sameSite.slice(1) : 'SameSite ✗';
+    const ssFlag    = `<span class="flag ${ssColor}">${esc(ssLabel)}</span>`;
+    return `<div class="cookie-row"><span class="${nameClass}">${esc(ck.name) || '(unnamed)'}</span><span class="cookie-flags">${secFlag}${hoFlag}${ssFlag}</span></div>`;
+  }).join('');
+
+  const issues = c.cookies.reduce((n, ck) => n + ck.issues.length, 0);
+  const summary = issues === 0
+    ? `<div style="font-size:0.7rem;color:var(--green);margin-bottom:6px">All ${c.count} cookie(s) properly secured ✓</div>`
+    : `<div style="font-size:0.7rem;color:var(--yellow);margin-bottom:6px">${c.count} cookie(s) — ${issues} issue(s) found</div>`;
+
+  return section('Cookie Security', summary + rows);
 }
 
 function renderDNS(d, serviceUrl) {

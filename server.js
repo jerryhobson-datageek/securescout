@@ -384,6 +384,36 @@ function analyzeSecurityHeaders(headers) {
   return { grade, score: pct, checks: results };
 }
 
+// ── Cookie Security ───────────────────────────────────────────────────────────
+function analyzeCookies(headers) {
+  const raw = headers['set-cookie'];
+  if (!raw || raw.length === 0) return { count: 0, cookies: [] };
+
+  const sessionPattern = /^(sess(ion)?|auth|token|sid|jwt|user|login|remember|csrf|id)/i;
+
+  const cookies = raw.map(line => {
+    const parts = line.split(';').map(p => p.trim());
+    const name = (parts[0] || '').split('=')[0].trim();
+    const attrs = parts.slice(1).map(p => p.toLowerCase());
+
+    const secure   = attrs.some(a => a === 'secure');
+    const httpOnly = attrs.some(a => a === 'httponly');
+    const ssAttr   = attrs.find(a => a.startsWith('samesite='));
+    const sameSite = ssAttr ? ssAttr.split('=')[1] : null;
+    const sessionLike = sessionPattern.test(name);
+
+    const issues = [];
+    if (!secure)   issues.push('Missing Secure');
+    if (!httpOnly) issues.push('Missing HttpOnly');
+    if (!sameSite) issues.push('Missing SameSite');
+    else if (sameSite === 'none' && !secure) issues.push('SameSite=None without Secure');
+
+    return { name, secure, httpOnly, sameSite, sessionLike, issues };
+  });
+
+  return { count: cookies.length, cookies };
+}
+
 // ── WAF Detection ─────────────────────────────────────────────────────────────
 function detectWAF(headers, probeResult) {
   const allHeaders = { ...headers, ...(probeResult.headers || {}) };
@@ -476,6 +506,7 @@ async function scanService(service) {
     dns: dnsChecks,
     securityHeaders: headersResult.ok ? analyzeSecurityHeaders(headers) : null,
     waf: headersResult.ok ? detectWAF(headers, probeResult) : null,
+    cookies: headersResult.ok ? analyzeCookies(headers) : null,
     server: headersResult.ok ? analyzeServer(headers, ip) : null,
     browserSupport: {
       tls12: tls12.supported,
