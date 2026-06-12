@@ -21,6 +21,12 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 ![HTTP→HTTPS Redirect](docs/screenshots/08_redirect_badge.png)
 *HTTP→HTTPS redirect badge — green ↪ HTTPS when port 80 redirects correctly, red when missing*
 
+![Detail View](docs/screenshots/09_detail_view.png)
+*Full-screen detail view — 6-metric scorecard, all sections expanded, header fix directives pre-opened*
+
+![Recommendations](docs/screenshots/09b_detail_recommendations.png)
+*Recommendations panel — aggregates every failing check with copy-ready Nginx fix directives*
+
 ![Fix Recommendations](docs/screenshots/03_fix_recommendation.png)
 *Click any failing header to expand a copy-ready Nginx directive*
 
@@ -38,6 +44,8 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 - **DNS Security** — DNSSEC, CAA issuers, SPF, DMARC (policy: reject/quarantine/none), and on-demand DKIM selector lookup
 - **Cookie Security** — Secure, HttpOnly, SameSite flags per cookie; session-like names highlighted; issue count summary
 - **HTTP→HTTPS Redirect** — checks whether plain HTTP (port 80) redirects to HTTPS; green badge in card header when working, red when missing
+- **Full-screen Detail View** — click any card title or the Report button to open a full-screen overlay with a 6-metric scorecard, all sections expanded, and a Recommendations panel aggregating every failing check with copy-ready Nginx fixes
+- **PDF Export** — Export PDF button renders a clean white-background report via the browser print dialog; all badges and code blocks styled for print
 - **Server Info** — software, IP address, HTTP status, response time, X-Powered-By
 - **Browser Support** — TLS 1.2/1.3 and HTTP/2 probed directly, with human-readable compatibility notes
 - **Fix Recommendations** — click any failing header to expand a copy-ready Nginx directive
