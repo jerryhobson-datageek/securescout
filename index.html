@@ -250,6 +250,103 @@
     .ssl-grid, .server-grid { grid-template-columns: 1fr; }
     .header-right { gap: 6px; }
   }
+
+  /* ── Detail / Report overlay ── */
+  .detail-overlay {
+    display: none; position: fixed; inset: 0;
+    background: var(--bg); z-index: 500; overflow-y: auto;
+  }
+  .detail-overlay.open { display: block; }
+  .detail-topbar {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 14px 28px; display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 16px;
+  }
+  .detail-title { font-size: 1.15rem; font-weight: 700; }
+  .detail-meta { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+  .detail-topbar-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; padding-top: 2px; }
+  .detail-wrap { max-width: 960px; margin: 0 auto; padding: 24px 28px 56px; }
+  .detail-score-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px; margin-bottom: 8px;
+  }
+  .detail-score-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; text-align: center;
+  }
+  .dsc-label { font-size: 0.63rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+  .dsc-value { font-size: 1rem; font-weight: 700; }
+  .detail-sections { display: grid; gap: 12px; margin-top: 20px; }
+  .reco-list { display: grid; gap: 8px; }
+  .reco-item {
+    background: var(--bg); border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 8px; padding: 10px 13px;
+  }
+  .reco-item.warn { border-color: rgba(251,191,36,0.3); }
+  .reco-header { display: flex; gap: 8px; align-items: baseline; margin-bottom: 5px; }
+  .reco-label { font-size: 0.8rem; font-weight: 600; }
+  .reco-note { font-size: 0.7rem; color: var(--muted); margin-left: auto; }
+  .reco-fix-label { font-size: 0.63rem; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+
+  /* ── Print / PDF ── */
+  .print-report-header { display: none; }
+  .print-footer { display: none; }
+
+  @media print {
+    body { background: #fff !important; color: #111 !important; }
+    header, #app > *:not(#detailModal) { display: none !important; }
+    #detailModal { display: block !important; position: static !important; overflow: visible !important; }
+    .detail-overlay { position: static !important; overflow: visible !important; background: #fff !important; }
+    .detail-topbar { display: none !important; }
+    .no-print { display: none !important; }
+    .print-report-header {
+      display: flex !important; justify-content: space-between; align-items: flex-start;
+      padding-bottom: 14px; border-bottom: 2px solid #ddd; margin-bottom: 20px;
+    }
+    .print-footer { display: block !important; text-align: center; color: #aaa; font-size: 0.7rem; margin-top: 40px; padding-top: 12px; border-top: 1px solid #eee; }
+    .detail-wrap { padding: 0; max-width: 100%; }
+    .detail-score-card { background: #f5f5f5 !important; border-color: #ddd !important; }
+    .dsc-label { color: #888 !important; }
+    .check-section { background: #f9f9f9 !important; border-color: #e0e0e0 !important; break-inside: avoid; }
+    .section-title { color: #666 !important; }
+    .field .fl { color: #888 !important; }
+    .field .fv { color: #111 !important; }
+    .fix-block { display: block !important; }
+    .fix-code { background: #f5f5f5 !important; color: #1a7a1a !important; border-color: #ddd !important; }
+    .fix-copy, .sparkline, .dkim-check, #dkim-result-+ * { display: none !important; }
+    .grade-A { background: #e8f5e9 !important; color: #2e7d32 !important; }
+    .grade-B { background: #e3f2fd !important; color: #1565c0 !important; }
+    .grade-C { background: #fffde7 !important; color: #f57f17 !important; }
+    .grade-D { background: #fff3e0 !important; color: #e65100 !important; }
+    .grade-F { background: #fce4ec !important; color: #c62828 !important; }
+    .dns-tag-ok  { background: #e8f5e9 !important; color: #2e7d32 !important; border-color: #a5d6a7 !important; }
+    .dns-tag-fail { background: #fce4ec !important; color: #c62828 !important; border-color: #ef9a9a !important; }
+    .dns-tag-warn { background: #fffde7 !important; color: #f57f17 !important; border-color: #ffe082 !important; }
+    .dns-tag-info { background: #e3f2fd !important; color: #1565c0 !important; border-color: #90caf9 !important; }
+    .days-ok { background: #e8f5e9 !important; color: #2e7d32 !important; }
+    .days-warn { background: #fffde7 !important; color: #f57f17 !important; }
+    .days-crit { background: #fce4ec !important; color: #c62828 !important; }
+    .tls-ok  { background: #e8f5e9 !important; color: #2e7d32 !important; border-color: #a5d6a7 !important; }
+    .tls-fail { background: #fce4ec !important; color: #c62828 !important; border-color: #ef9a9a !important; }
+    .tls-info { background: #e3f2fd !important; color: #1565c0 !important; border-color: #90caf9 !important; }
+    .flag-ok   { background: #e8f5e9 !important; color: #2e7d32 !important; border-color: #a5d6a7 !important; }
+    .flag-fail { background: #fce4ec !important; color: #c62828 !important; border-color: #ef9a9a !important; }
+    .flag-warn { background: #fffde7 !important; color: #f57f17 !important; border-color: #ffe082 !important; }
+    .header-name { color: #555 !important; }
+    .header-note { color: #111 !important; }
+    .waf-detail, .browser-notes, .no-cookies { color: #666 !important; }
+    .error-msg { color: #c62828 !important; }
+    .cookie-name { color: #111 !important; }
+    .cookie-name.session { color: #1565c0 !important; }
+    .reco-item { background: #fff8f8 !important; border-color: #f5c6cb !important; }
+    .reco-item.warn { background: #fffef0 !important; border-color: #ffe082 !important; }
+    .reco-label { color: #111 !important; }
+    .reco-fix-label { color: #1565c0 !important; }
+    .dot-fail { background: #c62828 !important; }
+    .dot-warn { background: #f57f17 !important; }
+    @page { margin: 18mm 16mm; }
+  }
 </style>
 </head>
 <body>
@@ -351,6 +448,33 @@
   </div>
   <div class="services-grid" id="servicesGrid"></div>
 </main>
+<!-- ── Detail / Report Modal ── -->
+<div id="detailModal" class="detail-overlay">
+  <!-- Print-only header (hidden on screen) -->
+  <div class="print-report-header">
+    <div>
+      <div style="font-size:1.35rem;font-weight:800;color:#111">🛡️ SecureScout Security Report</div>
+      <div style="font-size:0.8rem;color:#555;margin-top:3px" id="detailPrintSub"></div>
+    </div>
+    <div style="font-size:0.75rem;color:#888;text-align:right" id="detailPrintDate"></div>
+  </div>
+  <!-- Screen topbar -->
+  <div class="detail-topbar no-print">
+    <div>
+      <div class="detail-title" id="detailName"></div>
+      <div class="detail-meta" id="detailMeta"></div>
+    </div>
+    <div class="detail-topbar-actions">
+      <button class="btn-secondary btn-sm" onclick="exportPDF()">⬇ Export PDF</button>
+      <button class="btn-secondary btn-sm" onclick="closeDetail()">✕ Close</button>
+    </div>
+  </div>
+  <div class="detail-wrap">
+    <div id="detailBody"></div>
+    <div class="print-footer" id="detailFooter"></div>
+  </div>
+</div>
+
 </div><!-- /#app -->
 
 <script>
@@ -479,13 +603,14 @@ function cardHTML(name, cardUrl, skeleton) {
   return `
     <div class="service-card" id="card-${key}">
       <div class="card-header">
-        <div>
+        <div style="cursor:pointer" onclick="openDetail('${cardUrl}')" title="View full report">
           <div class="card-title">${esc(name)}</div>
           <div class="card-url">${esc(cardUrl)}</div>
         </div>
         <div class="card-actions">
           <span class="badge badge-scanning" id="badge-${key}">— Pending</span>
           <span class="badge" id="redirect-badge-${key}" style="display:none" title="HTTP→HTTPS redirect"></span>
+          <button class="btn-secondary btn-sm" onclick="openDetail('${cardUrl}')">Report</button>
           <button class="btn-secondary btn-sm" onclick="scanOne('${cardUrl}')">Scan</button>
           <button class="btn-remove" title="Remove" onclick="removeSite('${cardUrl}','${esc(name)}')">✕</button>
         </div>
@@ -605,10 +730,10 @@ function renderSSL(ssl) {
     </div>`);
 }
 
-function renderHeaders(h, hist) {
+function renderHeaders(h, hist, expanded = false) {
   if (!h) return section('Security Headers', '<div class="error-msg">Not available</div>');
   const gc = 'grade-' + h.grade;
-  const sparkHtml = hist.length > 1 ? `
+  const sparkHtml = !expanded && hist.length > 1 ? `
     <div class="sparkline">
       ${hist.slice(-15).map(e => `<span class="spark-dot spark-${e.grade||'null'}" title="${e.grade||'?'} on ${fmtDate(e.scannedAt)}"></span>`).join('')}
       <span class="spark-label">last ${Math.min(hist.length-1,15)} scans</span>
@@ -618,14 +743,15 @@ function renderHeaders(h, hist) {
     const dotClass = c.pass === true ? 'dot-ok' : c.pass === 'warn' ? 'dot-warn' : 'dot-fail';
     const hasFix = !!c.fix;
     const fixId = 'fix-' + i + '-' + Math.random().toString(36).slice(2,7);
+    const open = expanded && hasFix;
     const fixBlock = hasFix ? `
-      <div class="fix-block" id="${fixId}">
+      <div class="fix-block${open?' open':''}" id="${fixId}">
         <div class="fix-label">Nginx fix</div>
         <div class="fix-code">${esc(c.fix)}<button class="fix-copy" onclick="copyFix(this,'${esc(c.fix)}')">Copy</button></div>
       </div>` : '';
     return `<div class="header-row${hasFix?' has-fix':''}">
       <div class="header-main" ${hasFix?`onclick="toggleFix('${fixId}',this)"`:''}>
-        <span class="header-name-wrap"><span class="dot ${dotClass}"></span><span class="header-name">${esc(c.label)}</span>${hasFix?'<span class="fix-toggle">▸ fix</span>':''}</span>
+        <span class="header-name-wrap"><span class="dot ${dotClass}"></span><span class="header-name">${esc(c.label)}</span>${hasFix?`<span class="fix-toggle">${open?'▾':'▸'} fix</span>`:''}</span>
         <span class="header-note">${esc(c.note)}</span>
       </div>
       ${fixBlock}
@@ -915,9 +1041,111 @@ async function checkDKIM(domain, key) {
   }
 }
 
+// ── Detail / Report View ──────────────────────────────────────────────────────
+function openDetail(url) {
+  const r = results[url];
+  if (!r) return;
+  const hist = historyData[url] || [];
+  const scanned = r.scannedAt ? new Date(r.scannedAt).toLocaleString() : '—';
+
+  document.getElementById('detailName').textContent = r.name;
+  document.getElementById('detailMeta').textContent = r.url + '  ·  Scanned ' + scanned;
+  document.getElementById('detailPrintSub').textContent = r.name + '  —  ' + r.url;
+  document.getElementById('detailPrintDate').textContent = 'Scanned: ' + scanned;
+  document.getElementById('detailFooter').textContent = 'Generated by SecureScout · ' + new Date().toLocaleString();
+  document.getElementById('detailBody').innerHTML = renderDetailContent(r, hist);
+  document.getElementById('detailModal').classList.add('open');
+  document.getElementById('detailModal').scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDetail() {
+  document.getElementById('detailModal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function exportPDF() { window.print(); }
+
+function renderDetailContent(r, hist) {
+  const parts = [];
+
+  // ── Summary scorecard ──
+  const sslOk = r.ssl?.ok;
+  const sslVal = !r.ssl ? 'N/A' : !sslOk ? '✗ Error' : r.ssl.daysLeft < 14 ? '⚠ Expiring' : '✓ Valid';
+  const sslColor = !r.ssl ? 'var(--muted)' : !sslOk ? 'var(--red)' : r.ssl.daysLeft < 14 ? 'var(--yellow)' : 'var(--green)';
+  const grade = r.securityHeaders?.grade || '—';
+  const gradeColor = {A:'var(--green)',B:'var(--blue)',C:'var(--yellow)',D:'var(--orange)',F:'var(--red)'}[grade]||'var(--text)';
+  const wafVal = r.waf?.detected ? (r.waf.name || 'Detected') : 'None';
+  const wafColor = r.waf?.detected ? 'var(--green)' : 'var(--yellow)';
+  const redirVal = r.httpRedirect?.checked ? (r.httpRedirect.redirects ? '✓ Yes' : '✗ Missing') : '—';
+  const redirColor = r.httpRedirect?.redirects ? 'var(--green)' : r.httpRedirect?.checked ? 'var(--red)' : 'var(--muted)';
+  const dmarcPolicy = r.dns?.dmarc?.policy || (r.dns?.dmarc?.present ? 'present' : 'missing');
+  const dmarcColor = dmarcPolicy === 'reject' ? 'var(--green)' : dmarcPolicy === 'quarantine' ? 'var(--yellow)' : dmarcPolicy === 'none' ? 'var(--yellow)' : 'var(--red)';
+  const rt = r.responseTime ? r.responseTime + ' ms' : '—';
+
+  parts.push(`<div class="detail-score-grid">
+    <div class="detail-score-card"><div class="dsc-label">SSL</div><div class="dsc-value" style="color:${sslColor}">${sslVal}</div></div>
+    <div class="detail-score-card"><div class="dsc-label">Headers</div><div class="dsc-value" style="color:${gradeColor}">Grade ${grade}</div></div>
+    <div class="detail-score-card"><div class="dsc-label">WAF</div><div class="dsc-value" style="color:${wafColor};font-size:0.85rem">${esc(wafVal)}</div></div>
+    <div class="detail-score-card"><div class="dsc-label">Redirect</div><div class="dsc-value" style="color:${redirColor}">${redirVal}</div></div>
+    <div class="detail-score-card"><div class="dsc-label">Response</div><div class="dsc-value" style="font-size:0.88rem">${rt}</div></div>
+    <div class="detail-score-card"><div class="dsc-label">DMARC</div><div class="dsc-value" style="color:${dmarcColor};font-size:0.85rem">${esc(dmarcPolicy)}</div></div>
+  </div>`);
+
+  // ── All check sections ──
+  parts.push('<div class="detail-sections">');
+  parts.push(renderSSL(r.ssl));
+  parts.push(renderHeaders(r.securityHeaders, hist, true));
+  parts.push(renderWAF(r.waf));
+  parts.push(renderCookies(r.cookies));
+  parts.push(renderServer(r.server, r.responseTime, r.httpStatus));
+  parts.push(renderBrowser(r.browserSupport));
+  parts.push(renderDNS(r.dns, r.url));
+
+  // ── Recommendations ──
+  const recos = buildRecommendations(r);
+  if (recos.length) {
+    const recoHtml = recos.map(rec => `
+      <div class="reco-item${rec.severity === 'warn' ? ' warn' : ''}">
+        <div class="reco-header">
+          <span class="dot ${rec.severity === 'warn' ? 'dot-warn' : 'dot-fail'}"></span>
+          <span class="reco-label">${esc(rec.label)}</span>
+          <span class="reco-note">${esc(rec.note)}</span>
+        </div>
+        ${rec.fix ? `<div class="reco-fix-label">Nginx fix</div><div class="fix-code" style="font-family:Consolas,monospace;font-size:0.7rem;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--green);word-break:break-all;white-space:pre-wrap;position:relative">${esc(rec.fix)}<button class="fix-copy" onclick="copyFix(this,'${esc(rec.fix)}')">Copy</button></div>` : ''}
+      </div>`).join('');
+    parts.push(section('Recommendations', `<div class="reco-list">${recoHtml}</div>`));
+  } else {
+    parts.push(section('Recommendations', '<div style="font-size:0.78rem;color:var(--green)">✓ No critical issues found</div>'));
+  }
+
+  parts.push('</div>');
+  return parts.join('');
+}
+
+function buildRecommendations(r) {
+  const recos = [];
+  if (r.securityHeaders?.checks) {
+    r.securityHeaders.checks.forEach(c => {
+      if (c.pass !== true) recos.push({ label: c.label, note: c.note, fix: c.fix || null, severity: c.pass === 'warn' ? 'warn' : 'fail' });
+    });
+  }
+  if (!r.ssl?.ok && r.ssl) recos.push({ label: 'SSL Certificate error', note: r.ssl.error || 'Not valid', severity: 'fail' });
+  else if (r.ssl?.ok && r.ssl.daysLeft < 30) recos.push({ label: 'SSL certificate expiring soon', note: `${r.ssl.daysLeft} days remaining`, severity: r.ssl.daysLeft < 14 ? 'fail' : 'warn' });
+  if (r.httpRedirect?.checked && !r.httpRedirect.redirects) recos.push({ label: 'HTTP→HTTPS redirect missing', note: 'Port 80 does not redirect to HTTPS', severity: 'fail' });
+  if (!r.dns?.dmarc?.present) recos.push({ label: 'DMARC record missing', note: 'Email spoofing is unmitigated', severity: 'fail' });
+  else if (r.dns.dmarc.policy !== 'reject') recos.push({ label: 'DMARC policy is not reject', note: `Current policy: ${r.dns.dmarc.policy}`, severity: 'warn' });
+  if (!r.dns?.caaPresent) recos.push({ label: 'CAA records missing', note: 'Any certificate authority can issue certs for this domain', severity: 'warn' });
+  if (r.cookies?.count > 0) {
+    const issues = r.cookies.cookies.reduce((n, ck) => n + ck.issues.length, 0);
+    if (issues > 0) recos.push({ label: 'Cookie security flags missing', note: `${issues} issue(s) across ${r.cookies.count} cookie(s)`, severity: 'warn' });
+  }
+  return recos;
+}
+
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeAddModal(); closePwModal(); }
+  if (e.key === 'Escape') { closeAddModal(); closePwModal(); closeDetail(); }
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
