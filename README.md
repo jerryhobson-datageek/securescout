@@ -18,6 +18,9 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 ![Cookie Security](docs/screenshots/07_cookie_security.png)
 *Cookie Security — Secure, HttpOnly, SameSite flags per cookie with issue count*
 
+![HTTP→HTTPS Redirect](docs/screenshots/08_redirect_badge.png)
+*HTTP→HTTPS redirect badge — green ↪ HTTPS when port 80 redirects correctly, red when missing*
+
 ![Fix Recommendations](docs/screenshots/03_fix_recommendation.png)
 *Click any failing header to expand a copy-ready Nginx directive*
 
@@ -34,6 +37,7 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 - **WAF Detection** — fingerprints Cloudflare, AWS WAF, Sucuri, Imperva, Akamai, F5 BIG-IP, Barracuda, Fastly; fires a live XSS + SQLi probe to test blocking
 - **DNS Security** — DNSSEC, CAA issuers, SPF, DMARC (policy: reject/quarantine/none), and on-demand DKIM selector lookup
 - **Cookie Security** — Secure, HttpOnly, SameSite flags per cookie; session-like names highlighted; issue count summary
+- **HTTP→HTTPS Redirect** — checks whether plain HTTP (port 80) redirects to HTTPS; green badge in card header when working, red when missing
 - **Server Info** — software, IP address, HTTP status, response time, X-Powered-By
 - **Browser Support** — TLS 1.2/1.3 and HTTP/2 probed directly, with human-readable compatibility notes
 - **Fix Recommendations** — click any failing header to expand a copy-ready Nginx directive
@@ -175,6 +179,7 @@ All endpoints except `/api/login`, `/api/setup`, and `/api/status` require a val
 | `GET /api/scan?url=` | GET | Scan a single service |
 | `GET /api/results` | GET | Return cached scan results |
 | `GET /api/history` | GET | Return scan history (last 30 per service) |
+| `GET /api/dkim?domain=&selector=` | GET | Check DKIM record for a domain/selector pair |
 
 ## WAF Detection Method
 

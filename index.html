@@ -485,6 +485,7 @@ function cardHTML(name, cardUrl, skeleton) {
         </div>
         <div class="card-actions">
           <span class="badge badge-scanning" id="badge-${key}">— Pending</span>
+          <span class="badge" id="redirect-badge-${key}" style="display:none" title="HTTP→HTTPS redirect"></span>
           <button class="btn-secondary btn-sm" onclick="scanOne('${cardUrl}')">Scan</button>
           <button class="btn-remove" title="Remove" onclick="removeSite('${cardUrl}','${esc(name)}')">✕</button>
         </div>
@@ -556,6 +557,23 @@ function renderOneResult(r) {
   else if (r.ssl?.ok && r.ssl.daysLeft < 14) { badge.className = 'badge badge-warn'; badge.textContent = '⚠ SSL Expiring'; }
   else if (r.securityHeaders?.grade === 'F') { badge.className = 'badge badge-warn'; badge.textContent = '⚠ Weak Headers'; }
   else { badge.className = 'badge badge-ok'; badge.textContent = '✓ OK'; }
+
+  const redirectBadge = document.getElementById('redirect-badge-' + key);
+  if (redirectBadge) {
+    const hr = r.httpRedirect;
+    if (hr?.checked) {
+      redirectBadge.style.display = '';
+      if (hr.redirects) {
+        redirectBadge.className = 'badge badge-ok';
+        redirectBadge.textContent = '↪ HTTPS';
+      } else {
+        redirectBadge.className = 'badge badge-fail';
+        redirectBadge.textContent = '↪ No Redirect';
+      }
+    } else {
+      redirectBadge.style.display = 'none';
+    }
+  }
 
   const hist = historyData[r.url] || [];
   body.innerHTML = [

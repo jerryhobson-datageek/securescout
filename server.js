@@ -272,6 +272,29 @@ function probeHTTP2(host, port = 443) {
   });
 }
 
+// ── HTTP→HTTPS Redirect Check ─────────────────────────────────────────────────
+function checkHTTPRedirect(host) {
+  return new Promise((resolve) => {
+    const req = http.request({
+      hostname: host, port: 80, path: '/', method: 'GET',
+      headers: { 'User-Agent': 'Mozilla/5.0 (SecureScout/1.0)', 'Accept': '*/*' }
+    }, (res) => {
+      res.destroy();
+      const location = res.headers['location'] || '';
+      const isRedirect = res.statusCode >= 300 && res.statusCode < 400;
+      resolve({
+        checked: true,
+        status: res.statusCode,
+        redirects: isRedirect && location.startsWith('https://'),
+        location: location || null
+      });
+    });
+    req.on('error', () => resolve({ checked: false, redirects: false, status: null, location: null }));
+    req.setTimeout(5000, () => { req.destroy(); resolve({ checked: false, redirects: false, status: null, location: null }); });
+    req.end();
+  });
+}
+
 // ── Fetch Headers ─────────────────────────────────────────────────────────────
 function fetchHeaders(targetUrl) {
   return new Promise((resolve) => {
@@ -482,14 +505,15 @@ async function scanService(service) {
   const sslHost = service.sslHost || host;
   const checkSsl = isHTTPS || !!service.sslHost;
 
-  const [ssl, headersResult, probeResult, tls12, tls13, http2, dnsChecks] = await Promise.all([
+  const [ssl, headersResult, probeResult, tls12, tls13, http2, dnsChecks, httpRedirect] = await Promise.all([
     checkSsl ? checkSSL(sslHost) : Promise.resolve({ ok: false, error: 'Not HTTPS' }),
     fetchHeaders(service.url),
     probeWAF(service.url),
     checkSsl ? probeTLS(sslHost, 443, 'TLSv1.2') : Promise.resolve({ supported: false }),
     checkSsl ? probeTLS(sslHost, 443, 'TLSv1.3') : Promise.resolve({ supported: false }),
     checkSsl ? probeHTTP2(sslHost) : Promise.resolve(false),
-    checkDNS(sslHost)
+    checkDNS(sslHost),
+    isHTTPS ? checkHTTPRedirect(host) : Promise.resolve({ checked: false, redirects: false, status: null, location: null })
   ]);
 
   const ip = dnsChecks.ips?.[0] || null;
@@ -505,6 +529,7 @@ async function scanService(service) {
     ssl,
     dns: dnsChecks,
     securityHeaders: headersResult.ok ? analyzeSecurityHeaders(headers) : null,
+    httpRedirect,
     waf: headersResult.ok ? detectWAF(headers, probeResult) : null,
     cookies: headersResult.ok ? analyzeCookies(headers) : null,
     server: headersResult.ok ? analyzeServer(headers, ip) : null,
