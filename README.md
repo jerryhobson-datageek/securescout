@@ -1,13 +1,16 @@
 # SecureScout
 
-A self-hosted security dashboard for monitoring your web services. Checks SSL certificates, security headers, WAF detection, server info, and browser support — all from a single page.
+A self-hosted security dashboard for monitoring your web services. Checks SSL certificates, security headers, WAF detection, DNS security (DNSSEC, CAA, SPF, DMARC), server info, and browser support — all from a single page.
 
 ![Node.js](https://img.shields.io/badge/Node.js-20+-green) ![License](https://img.shields.io/badge/license-MIT-blue) ![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 
 ## Screenshots
 
 ![Dashboard](docs/screenshots/02_dashboard.png)
-*6 services monitored — SSL, WAF, security headers graded A–F, sparkline history per service*
+*5 services monitored — SSL, WAF, security headers graded A–F, sparkline history per service*
+
+![DNS Security](docs/screenshots/05_dns_dmarc.png)
+*DNS Security section — DNSSEC, CAA, SPF, and DMARC badges with policy detail*
 
 ![Fix Recommendations](docs/screenshots/03_fix_recommendation.png)
 *Click any failing header to expand a copy-ready Nginx directive*
@@ -23,6 +26,7 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 - **SSL Certificate** — expiry countdown, issuer, cipher suite, protocol, self-signed detection
 - **Security Headers** — grades A–F across 8 headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, X-XSS-Protection, Cache-Control)
 - **WAF Detection** — fingerprints Cloudflare, AWS WAF, Sucuri, Imperva, Akamai, F5 BIG-IP, Barracuda, Fastly; fires a live XSS + SQLi probe to test blocking
+- **DNS Security** — DNSSEC, CAA issuers, SPF, and DMARC (policy: reject/quarantine/none) with per-record detail
 - **Server Info** — software, IP address, HTTP status, response time, X-Powered-By
 - **Browser Support** — TLS 1.2/1.3 and HTTP/2 probed directly, with human-readable compatibility notes
 - **Fix Recommendations** — click any failing header to expand a copy-ready Nginx directive
