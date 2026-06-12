@@ -655,7 +655,15 @@ function renderDNS(d) {
     ? `<span class="dns-tag dns-tag-ok">SPF ✓</span>`
     : `<span class="dns-tag dns-tag-warn">SPF ✗</span>`;
 
-  const badgesHTML = `<div style="margin-bottom:8px">${dnssec}${caa}${spf}</div>`;
+  const dmarcTag = !d.dmarc?.present
+    ? `<span class="dns-tag dns-tag-fail">DMARC ✗</span>`
+    : d.dmarc.policy === 'reject'
+      ? `<span class="dns-tag dns-tag-ok">DMARC reject</span>`
+      : d.dmarc.policy === 'quarantine'
+        ? `<span class="dns-tag dns-tag-warn">DMARC quarantine</span>`
+        : `<span class="dns-tag dns-tag-warn">DMARC none</span>`;
+
+  const badgesHTML = `<div style="margin-bottom:8px">${dnssec}${caa}${spf}${dmarcTag}</div>`;
 
   const caaDetail = d.caaPresent
     ? (d.caaIssuers.length ? d.caaIssuers.join(', ') : 'Present')
@@ -674,6 +682,7 @@ function renderDNS(d) {
       <div class="field"><div class="fl">Nameservers</div><div class="fv" style="font-size:0.72rem">${nsHtml}</div></div>
       <div class="field"><div class="fl">CAA Issuers</div><div class="fv" style="font-size:0.72rem;color:${d.caaPresent?'var(--text)':'var(--yellow)'}">${esc(caaDetail)}</div></div>
       ${d.spf ? `<div class="field"><div class="fl">SPF</div><div class="fv" style="font-size:0.68rem;word-break:break-all">${esc(d.spf)}</div></div>` : ''}
+      <div class="field" style="grid-column:1/-1"><div class="fl">DMARC</div><div class="fv" style="font-size:0.68rem;word-break:break-all;color:${!d.dmarc?.present?'var(--red)':d.dmarc.policy==='reject'?'var(--green)':'var(--yellow)'}">${d.dmarc?.record ? esc(d.dmarc.record) : 'Not set — email spoofing unmitigated'}</div></div>
     </div>`);
 }
 

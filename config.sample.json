@@ -1,0 +1,11 @@
+{
+  "port": 3002,
+  "scanIntervalMinutes": 60,
+  "discordWebhook": "",
+  "services": [
+    {
+      "name": "My Site",
+      "url": "https://example.com"
+    }
+  ]
+}

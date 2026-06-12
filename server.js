@@ -196,11 +196,12 @@ async function checkDNS(host) {
     return dns.resolveCaa(apex).catch(() => []);
   }
 
-  const [aRec, caaRec, nsRec, txtRec, dsResult, dnskeyResult] = await Promise.allSettled([
+  const [aRec, caaRec, nsRec, txtRec, dmarcRec, dsResult, dnskeyResult] = await Promise.allSettled([
     dns.resolve4(host).catch(() => []),
     resolveCaaWithFallback(),
     dns.resolveNs(apex).catch(() => []),
     dns.resolveTxt(apex).catch(() => []),
+    dns.resolveTxt('_dmarc.' + apex).catch(() => []),
     dohQuery(host, 'DS'),
     dohQuery(host, 'DNSKEY')
   ]);
@@ -209,6 +210,7 @@ async function checkDNS(host) {
   const caa       = caaRec.status     === 'fulfilled' ? caaRec.value     : [];
   const ns        = nsRec.status      === 'fulfilled' ? nsRec.value      : [];
   const txt       = txtRec.status     === 'fulfilled' ? txtRec.value.flat() : [];
+  const dmarcTxt  = dmarcRec.status   === 'fulfilled' ? dmarcRec.value.flat() : [];
   const dsData    = dsResult.status   === 'fulfilled' ? dsResult.value   : null;
   const dnskeyData = dnskeyResult.status === 'fulfilled' ? dnskeyResult.value : null;
 
@@ -230,6 +232,10 @@ async function checkDNS(host) {
   // SPF
   const spf = txt.find(t => t.startsWith('v=spf1')) || null;
 
+  // DMARC
+  const dmarcRecord = dmarcTxt.find(t => t.startsWith('v=DMARC1')) || null;
+  const dmarcPolicy = dmarcRecord ? (dmarcRecord.match(/[;, ]p=([a-z]+)/i) || [])[1] || null : null;
+
   return {
     ok: true,
     ips,
@@ -237,7 +243,8 @@ async function checkDNS(host) {
     caaPresent: caa.length > 0,
     caaIssuers,
     dnssecEnabled,
-    spf
+    spf,
+    dmarc: { present: !!dmarcRecord, record: dmarcRecord, policy: dmarcPolicy }
   };
 }
 
