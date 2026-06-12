@@ -202,6 +202,14 @@
   .dns-tag-fail { background: rgba(248,113,113,0.12);color: var(--red);    border: 1px solid rgba(248,113,113,0.3); }
   .dns-tag-info { background: rgba(96,165,250,0.12); color: var(--blue);   border: 1px solid rgba(96,165,250,0.3); }
 
+  .dkim-check { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+  .dkim-check input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; color: var(--text); font-size: 0.78rem; outline: none; font-family: 'Consolas', monospace; }
+  .dkim-check input:focus { border-color: var(--cyan); }
+  .dkim-check input::placeholder { color: var(--muted); }
+  .dkim-result { margin-top: 6px; font-size: 0.72rem; padding: 6px 9px; border-radius: 6px; word-break: break-all; line-height: 1.5; }
+  .dkim-result.found { background: rgba(74,222,128,0.08); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+  .dkim-result.not-found { background: rgba(248,113,113,0.08); color: var(--red); border: 1px solid rgba(248,113,113,0.2); }
+
   .skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 6px; height: 13px; margin: 4px 0; }
   @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
@@ -543,7 +551,7 @@ function renderOneResult(r) {
     renderWAF(r.waf),
     renderServer(r.server, r.responseTime, r.httpStatus),
     renderBrowser(r.browserSupport),
-    renderDNS(r.dns)
+    renderDNS(r.dns, r.url)
   ].join('');
 }
 
@@ -640,8 +648,10 @@ function renderBrowser(b) {
     <div class="browser-notes">${b.notes?b.notes.join(' · '):''}</div>`);
 }
 
-function renderDNS(d) {
+function renderDNS(d, serviceUrl) {
   if (!d || !d.ok) return section('DNS Security', '<div class="error-msg">Not available</div>');
+  const key = btoa(serviceUrl || '');
+  const domain = serviceUrl ? apexDomain(new URL(serviceUrl).hostname) : '';
 
   const dnssec = d.dnssecEnabled
     ? `<span class="dns-tag dns-tag-ok">DNSSEC ✓</span>`
@@ -683,7 +693,12 @@ function renderDNS(d) {
       <div class="field"><div class="fl">CAA Issuers</div><div class="fv" style="font-size:0.72rem;color:${d.caaPresent?'var(--text)':'var(--yellow)'}">${esc(caaDetail)}</div></div>
       ${d.spf ? `<div class="field"><div class="fl">SPF</div><div class="fv" style="font-size:0.68rem;word-break:break-all">${esc(d.spf)}</div></div>` : ''}
       <div class="field" style="grid-column:1/-1"><div class="fl">DMARC</div><div class="fv" style="font-size:0.68rem;word-break:break-all;color:${!d.dmarc?.present?'var(--red)':d.dmarc.policy==='reject'?'var(--green)':'var(--yellow)'}">${d.dmarc?.record ? esc(d.dmarc.record) : 'Not set — email spoofing unmitigated'}</div></div>
-    </div>`);
+    </div>
+    <div class="dkim-check">
+      <input type="text" placeholder="DKIM selector (e.g. google, default, mg)" id="dkim-sel-${key}" onkeydown="if(event.key==='Enter')checkDKIM('${esc(domain)}','${key}')">
+      <button class="btn-secondary btn-sm" onclick="checkDKIM('${esc(domain)}','${key}')">Check DKIM</button>
+    </div>
+    <div id="dkim-result-${key}"></div>`);
 }
 
 function section(title, inner) {
@@ -819,6 +834,31 @@ async function submitChangePassword() {
   sessionStorage.setItem('ss_token', sessionToken);
   closePwModal();
   alert('Password updated successfully.');
+}
+
+// ── DKIM Check ────────────────────────────────────────────────────────────────
+function apexDomain(host) {
+  const parts = host.split('.');
+  return parts.length > 2 ? parts.slice(-2).join('.') : host;
+}
+
+async function checkDKIM(domain, key) {
+  const sel = document.getElementById('dkim-sel-' + key)?.value.trim();
+  const resultEl = document.getElementById('dkim-result-' + key);
+  if (!sel) { resultEl.className = 'dkim-result not-found'; resultEl.textContent = 'Enter a selector first.'; return; }
+
+  resultEl.className = 'dkim-result'; resultEl.textContent = 'Checking…';
+
+  const data = await apiFetch(`/api/dkim?domain=${encodeURIComponent(domain)}&selector=${encodeURIComponent(sel)}`);
+  if (!data) { resultEl.className = 'dkim-result not-found'; resultEl.textContent = 'Request failed.'; return; }
+
+  if (data.found) {
+    resultEl.className = 'dkim-result found';
+    resultEl.textContent = `✓ ${sel}._domainkey.${domain}  →  ${data.record}`;
+  } else {
+    resultEl.className = 'dkim-result not-found';
+    resultEl.textContent = `✗ No DKIM record found at ${sel}._domainkey.${domain}`;
+  }
 }
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────

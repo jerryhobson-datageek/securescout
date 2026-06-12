@@ -646,6 +646,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === '/api/dkim') {
+    const domain = parsed.query.domain;
+    const selector = parsed.query.selector;
+    if (!domain || !selector) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'domain and selector are required' })); return; }
+    if (!/^[a-zA-Z0-9._-]+$/.test(selector) || !/^[a-zA-Z0-9._-]+$/.test(domain)) {
+      res.writeHead(400, json); res.end(JSON.stringify({ error: 'Invalid domain or selector' })); return;
+    }
+    try {
+      const records = await dns.resolveTxt(`${selector}._domainkey.${domain}`);
+      const record = records.flat().join('');
+      res.writeHead(200, json);
+      res.end(JSON.stringify({ found: true, selector, domain, record }));
+    } catch {
+      res.writeHead(200, json);
+      res.end(JSON.stringify({ found: false, selector, domain, record: null }));
+    }
+    return;
+  }
+
   if (pathname === '/api/results') {
     res.writeHead(200, json);
     res.end(JSON.stringify(Object.values(cache).filter(Boolean)));
