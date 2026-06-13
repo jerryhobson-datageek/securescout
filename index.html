@@ -359,8 +359,12 @@
     <div class="auth-subtitle" id="authSubtitle">Sign in to continue</div>
     <div class="auth-error" id="authError"></div>
     <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="authUsername" placeholder="Enter username" autocomplete="username" onkeydown="if(event.key==='Enter')submitAuth()">
+    </div>
+    <div class="form-group">
       <label id="authLabel">Password</label>
-      <input type="password" id="authPassword" placeholder="Enter password" onkeydown="if(event.key==='Enter')submitAuth()">
+      <input type="password" id="authPassword" placeholder="Enter password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitAuth()">
     </div>
     <div class="form-group" id="authConfirmGroup" style="display:none">
       <label>Confirm Password</label>
@@ -399,6 +403,36 @@
   </div>
 </div>
 
+<!-- User Management Modal -->
+<div class="modal-backdrop" id="usersModal" onclick="if(event.target===this)closeUsersModal()">
+  <div class="modal" style="max-width:520px">
+    <h2>User Management</h2>
+    <div id="usersList" style="margin-bottom:4px"></div>
+    <div style="border-top:1px solid var(--border);margin:18px 0 14px"></div>
+    <div style="font-size:0.88rem;font-weight:700;margin-bottom:14px">Add User</div>
+    <div class="form-group">
+      <label>Username</label>
+      <input type="text" id="newUsername" placeholder="username" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="newPassword" placeholder="Min 8 characters">
+    </div>
+    <div class="form-group">
+      <label>Role</label>
+      <select id="newRole" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:0.86rem;outline:none">
+        <option value="readonly">Read-only — can view and trigger scans</option>
+        <option value="admin">Admin — full access</option>
+      </select>
+    </div>
+    <div class="modal-error" id="usersError"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeUsersModal()">Close</button>
+      <button class="btn-primary" id="btnAddUser" onclick="submitAddUser()">Add User</button>
+    </div>
+  </div>
+</div>
+
 <!-- Change Password Modal -->
 <div class="modal-backdrop" id="pwModal" onclick="if(event.target===this)closePwModal()">
   <div class="modal">
@@ -430,9 +464,11 @@
   </div>
   <div class="header-right">
     <span class="last-scan" id="lastScan">—</span>
+    <span id="headerUser" style="display:none;font-size:0.72rem;color:var(--muted);padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px"></span>
     <button class="btn-secondary btn-sm" onclick="scanAll()">↻ Refresh</button>
-    <button class="btn-secondary btn-sm" onclick="openAddModal()">+ Add Site</button>
+    <button class="btn-secondary btn-sm" id="btnAddSite" onclick="openAddModal()">+ Add Site</button>
     <button class="btn-primary btn-sm" id="btnScanAll" onclick="scanAll()">Scan All</button>
+    <button class="btn-secondary btn-sm" id="btnUsers" onclick="openUsersModal()" style="display:none" title="Manage users">👥 Users</button>
     <button class="btn-secondary btn-sm" id="btnPw" onclick="openPwModal()" style="display:none" title="Change password">🔑</button>
     <button class="btn-secondary btn-sm" id="btnLogout" onclick="logout()" style="display:none">Sign Out</button>
   </div>
@@ -483,73 +519,70 @@ let results = {};
 let historyData = {};
 let scanning = false;
 let sessionToken = sessionStorage.getItem('ss_token');
+let currentUser = { username: sessionStorage.getItem('ss_username'), role: sessionStorage.getItem('ss_role') };
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function init() {
   const status = await fetch('/api/status').then(r => r.json());
 
-  if (!status.passwordSet) {
-    // First run — show setup screen
+  if (!status.setupDone) {
     document.getElementById('authTitle').textContent = 'Welcome to SecureScout';
-    document.getElementById('authSubtitle').textContent = 'Set a password to protect this dashboard';
+    document.getElementById('authSubtitle').textContent = 'Create your admin account to get started';
     document.getElementById('authLabel').textContent = 'Password (min 8 characters)';
     document.getElementById('authConfirmGroup').style.display = 'block';
-    document.getElementById('authBtn').textContent = 'Set Password & Continue';
+    document.getElementById('authBtn').textContent = 'Create Account & Continue';
     document.getElementById('authScreen').classList.add('show');
-    document.getElementById('authPassword').focus();
+    document.getElementById('authUsername').focus();
     return;
   }
 
   if (!status.authenticated || !sessionToken) {
-    // Need to log in
     document.getElementById('authScreen').classList.add('show');
-    document.getElementById('authPassword').focus();
+    document.getElementById('authUsername').focus();
     return;
   }
 
-  // Already authenticated — verify token still valid
-  const test = await apiFetch('/api/results');
-  if (test === null) {
-    sessionToken = null;
-    sessionStorage.removeItem('ss_token');
-    document.getElementById('authScreen').classList.add('show');
-    return;
-  }
+  // Token valid — sync role/username from server (handles upgrades)
+  if (status.username) { currentUser.username = status.username; sessionStorage.setItem('ss_username', status.username); }
+  if (status.role) { currentUser.role = status.role; sessionStorage.setItem('ss_role', status.role); }
 
   showApp();
 }
 
 async function submitAuth() {
   const status = await fetch('/api/status').then(r => r.json());
+  const username = document.getElementById('authUsername').value.trim();
   const pw = document.getElementById('authPassword').value;
   const errEl = document.getElementById('authError');
   const btn = document.getElementById('authBtn');
   errEl.textContent = '';
 
+  if (!username) { errEl.textContent = 'Username is required.'; return; }
   if (!pw) { errEl.textContent = 'Password is required.'; return; }
 
-  if (!status.passwordSet) {
-    // Setup
+  let data;
+  btn.disabled = true;
+
+  if (!status.setupDone) {
     const confirm = document.getElementById('authConfirm').value;
-    if (pw !== confirm) { errEl.textContent = 'Passwords do not match.'; return; }
-    if (pw.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; return; }
-    btn.disabled = true;
-    const res = await fetch('/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
-    const data = await res.json();
+    if (pw.length < 8) { btn.disabled = false; errEl.textContent = 'Password must be at least 8 characters.'; return; }
+    if (pw !== confirm) { btn.disabled = false; errEl.textContent = 'Passwords do not match.'; return; }
+    const res = await fetch('/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password: pw }) });
+    data = await res.json();
     btn.disabled = false;
     if (!res.ok) { errEl.textContent = data.error; return; }
-    sessionToken = data.token;
-    sessionStorage.setItem('ss_token', sessionToken);
   } else {
-    // Login
-    btn.disabled = true;
-    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
-    const data = await res.json();
+    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password: pw }) });
+    data = await res.json();
     btn.disabled = false;
-    if (!res.ok) { errEl.textContent = data.error || 'Invalid password.'; return; }
-    sessionToken = data.token;
-    sessionStorage.setItem('ss_token', sessionToken);
+    if (!res.ok) { errEl.textContent = data.error || 'Invalid username or password.'; return; }
   }
+
+  sessionToken = data.token;
+  currentUser = { username: data.username, role: data.role };
+  sessionStorage.setItem('ss_token', sessionToken);
+  sessionStorage.setItem('ss_username', data.username);
+  sessionStorage.setItem('ss_role', data.role);
 
   document.getElementById('authScreen').classList.remove('show');
   showApp();
@@ -558,12 +591,17 @@ async function submitAuth() {
 async function logout() {
   await apiFetch('/api/logout', { method: 'POST' });
   sessionToken = null;
-  sessionStorage.removeItem('ss_token');
+  currentUser = { username: null, role: null };
+  ['ss_token','ss_username','ss_role'].forEach(k => sessionStorage.removeItem(k));
   document.getElementById('app').classList.remove('show');
   document.getElementById('authTitle').textContent = 'SecureScout';
   document.getElementById('authSubtitle').textContent = 'Sign in to continue';
+  document.getElementById('authUsername').value = '';
   document.getElementById('authPassword').value = '';
+  document.getElementById('authConfirmGroup').style.display = 'none';
+  document.getElementById('authBtn').textContent = 'Sign In';
   document.getElementById('authScreen').classList.add('show');
+  document.getElementById('authUsername').focus();
 }
 
 async function showApp() {
@@ -571,6 +609,13 @@ async function showApp() {
   document.getElementById('app').classList.add('show');
   document.getElementById('btnLogout').style.display = 'block';
   document.getElementById('btnPw').style.display = 'block';
+
+  const isAdmin = currentUser.role === 'admin';
+  document.getElementById('btnAddSite').style.display = isAdmin ? '' : 'none';
+  document.getElementById('btnUsers').style.display = isAdmin ? '' : 'none';
+  const hu = document.getElementById('headerUser');
+  hu.textContent = (currentUser.username || '') + (isAdmin ? ' · admin' : ' · read-only');
+  hu.style.display = 'block';
 
   [services, historyData] = await Promise.all([
     apiFetch('/api/services'),
@@ -612,7 +657,7 @@ function cardHTML(name, cardUrl, skeleton) {
           <span class="badge" id="redirect-badge-${key}" style="display:none" title="HTTP→HTTPS redirect"></span>
           <button class="btn-secondary btn-sm" onclick="openDetail('${cardUrl}')">Report</button>
           <button class="btn-secondary btn-sm" onclick="scanOne('${cardUrl}')">Scan</button>
-          <button class="btn-remove" title="Remove" onclick="removeSite('${cardUrl}','${esc(name)}')">✕</button>
+          ${currentUser.role === 'admin' ? `<button class="btn-remove" title="Remove" onclick="removeSite('${cardUrl}','${esc(name)}')">✕</button>` : ''}
         </div>
       </div>
       <div class="card-body" id="body-${key}">${skeleton ? skeletonBody() : ''}</div>
@@ -1041,6 +1086,77 @@ async function checkDKIM(domain, key) {
   }
 }
 
+// ── User Management ───────────────────────────────────────────────────────────
+async function openUsersModal() {
+  document.getElementById('usersError').textContent = '';
+  ['newUsername','newPassword'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('newRole').value = 'readonly';
+  await refreshUsersList();
+  document.getElementById('usersModal').classList.add('open');
+}
+
+function closeUsersModal() { document.getElementById('usersModal').classList.remove('open'); }
+
+async function refreshUsersList() {
+  const users = await apiFetch('/api/users');
+  const el = document.getElementById('usersList');
+  if (!users) { el.innerHTML = '<div class="error-msg">Failed to load users.</div>'; return; }
+  if (!users.length) { el.innerHTML = '<div style="color:var(--muted);font-size:0.78rem">No users yet.</div>'; return; }
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+    <thead><tr style="color:var(--muted);font-size:0.65rem;text-transform:uppercase;letter-spacing:.05em">
+      <th style="text-align:left;padding:4px 8px">Username</th>
+      <th style="text-align:left;padding:4px 8px">Role</th>
+      <th style="text-align:left;padding:4px 8px">Added</th>
+      <th style="padding:4px 8px"></th>
+    </tr></thead>
+    <tbody>${users.map(u => {
+      const isMe = u.username === currentUser.username;
+      const roleCtrl = isMe
+        ? `<span style="color:var(--muted);font-size:0.75rem">${u.role}</span>`
+        : `<select onchange="changeRole('${esc(u.username)}',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--text);font-size:0.75rem;cursor:pointer">
+             <option value="readonly"${u.role==='readonly'?' selected':''}>Read-only</option>
+             <option value="admin"${u.role==='admin'?' selected':''}>Admin</option>
+           </select>`;
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:8px 8px;font-weight:600">${esc(u.username)}${isMe?` <span style="font-size:0.65rem;color:var(--cyan)">(you)</span>`:''}
+        </td>
+        <td style="padding:8px 8px">${roleCtrl}</td>
+        <td style="padding:8px 8px;color:var(--muted);font-size:0.7rem">${fmtDate(u.createdAt)}</td>
+        <td style="padding:8px 8px;text-align:right">${isMe ? '' : `<button class="btn-danger btn-sm" onclick="deleteUser('${esc(u.username)}')">Remove</button>`}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+async function submitAddUser() {
+  const username = document.getElementById('newUsername').value.trim();
+  const password = document.getElementById('newPassword').value;
+  const role = document.getElementById('newRole').value;
+  const errEl = document.getElementById('usersError');
+  const btn = document.getElementById('btnAddUser');
+  errEl.textContent = '';
+  if (!username) { errEl.textContent = 'Username is required.'; return; }
+  if (!password) { errEl.textContent = 'Password is required.'; return; }
+  btn.disabled = true;
+  const data = await apiFetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, role }) });
+  btn.disabled = false;
+  if (!data || data.error) { errEl.textContent = data?.error || 'Failed to add user.'; return; }
+  document.getElementById('newUsername').value = '';
+  document.getElementById('newPassword').value = '';
+  await refreshUsersList();
+}
+
+async function deleteUser(username) {
+  if (!confirm(`Remove "${username}"? They will be signed out immediately.`)) return;
+  const data = await apiFetch('/api/users', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username }) });
+  if (data?.ok) await refreshUsersList();
+  else alert(data?.error || 'Failed to remove user.');
+}
+
+async function changeRole(username, role) {
+  const data = await apiFetch('/api/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, role }) });
+  if (!data?.ok) { alert(data?.error || 'Failed to update role.'); await refreshUsersList(); }
+}
+
 // ── Detail / Report View ──────────────────────────────────────────────────────
 function openDetail(url) {
   const r = results[url];
@@ -1145,7 +1261,7 @@ function buildRecommendations(r) {
 
 // ── Keyboard ──────────────────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeAddModal(); closePwModal(); closeDetail(); }
+  if (e.key === 'Escape') { closeAddModal(); closePwModal(); closeDetail(); closeUsersModal(); }
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

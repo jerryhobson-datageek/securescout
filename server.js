@@ -38,7 +38,15 @@ function appendHistory(result) {
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-const sessions = new Map(); // token → expiry timestamp
+const sessions = new Map(); // token → { userId, username, role, expires }
+
+// Migrate old single-password format to users array
+if (config.auth && !config.users) {
+  delete config.auth;
+  config.users = [];
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+if (!Array.isArray(config.users)) config.users = [];
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -54,25 +62,28 @@ function verifyPassword(password, stored) {
   } catch { return false; }
 }
 
-function createSession() {
+function createSession(user) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, Date.now() + 24 * 60 * 60 * 1000);
+  sessions.set(token, { userId: user.id, username: user.username, role: user.role, expires: Date.now() + 24 * 60 * 60 * 1000 });
   return token;
 }
 
-function validateSession(req) {
-  if (!config.auth?.password) return true; // no password set
+function getSession(req) {
   const auth = req.headers['authorization'] || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) return false;
-  const expiry = sessions.get(token);
-  if (!expiry || Date.now() > expiry) { sessions.delete(token); return false; }
-  return true;
+  if (!token) return null;
+  const session = sessions.get(token);
+  if (!session || Date.now() > session.expires) { sessions.delete(token); return null; }
+  return session;
+}
+
+function saveConfig() {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
 setInterval(() => {
   const now = Date.now();
-  for (const [token, expiry] of sessions) if (now > expiry) sessions.delete(token);
+  for (const [token, s] of sessions) if (now > s.expires) sessions.delete(token);
 }, 3600000);
 
 // ── Discord Alerts ────────────────────────────────────────────────────────────
@@ -557,46 +568,55 @@ const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
   const pathname = parsed.pathname;
 
-  const json = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS', 'Content-Type': 'application/json' };
+  const json = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, DELETE, PATCH, OPTIONS', 'Content-Type': 'application/json' };
 
   if (req.method === 'OPTIONS') { res.writeHead(204, json); res.end(); return; }
 
   // ── Public routes (no auth) ──
+  if (pathname === '/api/setup' && req.method === 'POST') {
+    if (config.users.length > 0) { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Setup already complete' })); return; }
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { username, password } = JSON.parse(body);
+        if (!username || username.trim().length < 3) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Username must be at least 3 characters' })); return; }
+        if (!password || password.length < 8) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Password must be at least 8 characters' })); return; }
+        const user = { id: crypto.randomUUID(), username: username.trim().toLowerCase(), password: hashPassword(password), role: 'admin', createdAt: new Date().toISOString() };
+        config.users.push(user);
+        saveConfig();
+        const token = createSession(user);
+        res.writeHead(200, json);
+        res.end(JSON.stringify({ token, role: user.role, username: user.username }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
   if (pathname === '/api/login' && req.method === 'POST') {
     let body = '';
     req.on('data', d => { body += d; });
     req.on('end', () => {
       try {
-        const { password } = JSON.parse(body);
-        if (!config.auth?.password) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'No password set' })); return; }
-        if (!verifyPassword(password, config.auth.password)) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Invalid password' })); return; }
+        const { username, password } = JSON.parse(body);
+        if (!config.users.length) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'No users configured' })); return; }
+        const user = config.users.find(u => u.username === username?.trim().toLowerCase());
+        if (!user || !verifyPassword(password, user.password)) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Invalid username or password' })); return; }
+        const token = createSession(user);
         res.writeHead(200, json);
-        res.end(JSON.stringify({ token: createSession() }));
+        res.end(JSON.stringify({ token, role: user.role, username: user.username }));
       } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
     });
     return;
   }
 
-  if (pathname === '/api/setup' && req.method === 'POST') {
-    if (config.auth?.password) { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Password already set' })); return; }
-    let body = '';
-    req.on('data', d => { body += d; });
-    req.on('end', () => {
-      try {
-        const { password } = JSON.parse(body);
-        if (!password || password.length < 8) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Password must be at least 8 characters' })); return; }
-        if (!config.auth) config.auth = {};
-        config.auth.password = hashPassword(password);
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-        res.writeHead(200, json);
-        res.end(JSON.stringify({ token: createSession() }));
-      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
-    });
+  // ── Status (public, returns auth context) ──
+  if (pathname === '/api/status') {
+    const session = getSession(req);
+    res.writeHead(200, json);
+    res.end(JSON.stringify({ setupDone: config.users.length > 0, authenticated: !!session, role: session?.role || null, username: session?.username || null }));
     return;
   }
-
-  // ── Auth check for all other routes ──
-  const authed = validateSession(req);
 
   if (pathname === '/') {
     const html = fs.readFileSync(path.join(__dirname, 'index.html'));
@@ -605,13 +625,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/api/status') {
-    res.writeHead(200, json);
-    res.end(JSON.stringify({ passwordSet: !!config.auth?.password, authenticated: authed }));
-    return;
-  }
-
-  if (!authed) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
+  // ── Auth required for all routes below ──
+  const session = getSession(req);
+  if (!session) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Unauthorized' })); return; }
 
   if (pathname === '/api/logout' && req.method === 'POST') {
     const auth = req.headers['authorization'] || '';
@@ -626,12 +642,83 @@ const server = http.createServer(async (req, res) => {
     req.on('end', () => {
       try {
         const { currentPassword, newPassword } = JSON.parse(body);
-        if (!verifyPassword(currentPassword, config.auth.password)) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Current password incorrect' })); return; }
+        const user = config.users.find(u => u.id === session.userId);
+        if (!user) { res.writeHead(404, json); res.end(JSON.stringify({ error: 'User not found' })); return; }
+        if (!verifyPassword(currentPassword, user.password)) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Current password incorrect' })); return; }
         if (!newPassword || newPassword.length < 8) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'New password must be at least 8 characters' })); return; }
-        config.auth.password = hashPassword(newPassword);
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-        sessions.clear();
-        res.writeHead(200, json); res.end(JSON.stringify({ token: createSession() }));
+        user.password = hashPassword(newPassword);
+        saveConfig();
+        for (const [t, s] of sessions) { if (s.userId === session.userId) sessions.delete(t); }
+        const newToken = createSession(user);
+        res.writeHead(200, json); res.end(JSON.stringify({ token: newToken }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
+  // ── User management (admin only) ──
+  if (pathname === '/api/users' && req.method === 'GET') {
+    if (session.role !== 'admin') { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Admin required' })); return; }
+    res.writeHead(200, json);
+    res.end(JSON.stringify(config.users.map(u => ({ id: u.id, username: u.username, role: u.role, createdAt: u.createdAt }))));
+    return;
+  }
+
+  if (pathname === '/api/users' && req.method === 'POST') {
+    if (session.role !== 'admin') { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Admin required' })); return; }
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { username, password, role } = JSON.parse(body);
+        if (!username || username.trim().length < 3) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Username must be at least 3 characters' })); return; }
+        if (!password || password.length < 8) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Password must be at least 8 characters' })); return; }
+        if (!['admin', 'readonly'].includes(role)) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Role must be admin or readonly' })); return; }
+        const uname = username.trim().toLowerCase();
+        if (config.users.find(u => u.username === uname)) { res.writeHead(409, json); res.end(JSON.stringify({ error: 'Username already exists' })); return; }
+        const user = { id: crypto.randomUUID(), username: uname, password: hashPassword(password), role, createdAt: new Date().toISOString() };
+        config.users.push(user);
+        saveConfig();
+        res.writeHead(201, json); res.end(JSON.stringify({ id: user.id, username: user.username, role: user.role, createdAt: user.createdAt }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
+  if (pathname === '/api/users' && req.method === 'DELETE') {
+    if (session.role !== 'admin') { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Admin required' })); return; }
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { username } = JSON.parse(body);
+        if (username === session.username) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Cannot delete your own account' })); return; }
+        const idx = config.users.findIndex(u => u.username === username);
+        if (idx === -1) { res.writeHead(404, json); res.end(JSON.stringify({ error: 'User not found' })); return; }
+        const deleted = config.users.splice(idx, 1)[0];
+        for (const [t, s] of sessions) { if (s.userId === deleted.id) sessions.delete(t); }
+        saveConfig();
+        res.writeHead(200, json); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
+  if (pathname === '/api/users' && req.method === 'PATCH') {
+    if (session.role !== 'admin') { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Admin required' })); return; }
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { username, role } = JSON.parse(body);
+        if (username === session.username) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Cannot change your own role' })); return; }
+        if (!['admin', 'readonly'].includes(role)) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'Role must be admin or readonly' })); return; }
+        const user = config.users.find(u => u.username === username);
+        if (!user) { res.writeHead(404, json); res.end(JSON.stringify({ error: 'User not found' })); return; }
+        user.role = role;
+        for (const [, s] of sessions) { if (s.userId === user.id) s.role = role; }
+        saveConfig();
+        res.writeHead(200, json); res.end(JSON.stringify({ ok: true, username: user.username, role: user.role }));
       } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
     });
     return;
@@ -644,6 +731,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/api/services' && req.method === 'POST') {
+    if (session.role !== 'admin') { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Admin required' })); return; }
     let body = '';
     req.on('data', d => { body += d; });
     req.on('end', async () => {
@@ -665,6 +753,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/api/services' && req.method === 'DELETE') {
+    if (session.role !== 'admin') { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Admin required' })); return; }
     let body = '';
     req.on('data', d => { body += d; });
     req.on('end', () => {
