@@ -80,7 +80,7 @@
   .btn-danger { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
   .btn-sm { padding: 5px 11px; font-size: 0.77rem; }
 
-  main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; overflow: visible; }
+  main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
 
   .summary-bar {
     display: grid;
@@ -92,27 +92,23 @@
   .summary-card .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
   .summary-card .value { font-size: 1.6rem; font-weight: 700; }
 
-  .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); column-gap: 18px; row-gap: 28px; padding-top: 2.5rem; overflow: visible; }
+  .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); column-gap: 18px; row-gap: 18px; }
 
-  .service-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: visible !important; transition: border-color 0.2s; padding-top: 2rem; }
+  .service-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: border-color 0.2s; }
   .service-card:hover { border-color: var(--cyan); }
 
   .card-grade-badge {
-    position: absolute;
-    top: -1rem;
-    left: 1rem;
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
     display: none;
+    flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    font-size: 1.15rem;
+    font-size: 1.1rem;
     font-weight: 900;
-    z-index: 10;
-    box-shadow: 0 3px 10px rgba(0,0,0,0.6);
-    border: 2px solid var(--bg);
     color: #fff;
+    margin-right: 12px;
   }
   .card-grade-badge.visible { display: inline-flex; }
   .card-grade-badge.grade-A { background: #16a34a; }
@@ -121,7 +117,7 @@
   .card-grade-badge.grade-D { background: #ea580c; }
   .card-grade-badge.grade-F { background: #dc2626; }
 
-  .card-header { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .card-header { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: 14px 14px 0 0; }
   .card-title { font-weight: 700; font-size: 0.95rem; }
   .card-url { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
   .card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
@@ -679,9 +675,9 @@ function cardHTML(name, cardUrl, skeleton, isPublic = false) {
   const key = btoa(cardUrl);
   return `
     <div class="service-card" id="card-${key}">
-      <div class="card-grade-badge" id="card-grade-${key}"></div>
       <div class="card-header">
-        <div style="cursor:pointer" onclick="openDetail('${cardUrl}')" title="View full report">
+        <div class="card-grade-badge" id="card-grade-${key}"></div>
+        <div style="cursor:pointer;flex:1;min-width:0" onclick="openDetail('${cardUrl}')" title="View full report">
           <div class="card-title">${esc(name)}</div>
           <div class="card-url">${esc(cardUrl)}</div>
         </div>
