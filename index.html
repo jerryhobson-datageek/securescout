@@ -117,10 +117,11 @@
   .card-grade-badge.grade-D { background: #ea580c; }
   .card-grade-badge.grade-F { background: #dc2626; }
 
-  .card-header { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: 14px 14px 0 0; }
+  .card-header { padding: 12px 18px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: 14px 14px 0 0; }
+  .card-header-top { display: flex; align-items: center; gap: 10px; }
   .card-title { font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card-url { font-size: 0.7rem; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .card-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
   .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; }
   .badge-ok { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.25); }
@@ -676,10 +677,12 @@ function cardHTML(name, cardUrl, skeleton, isPublic = false) {
   return `
     <div class="service-card" id="card-${key}">
       <div class="card-header">
-        <div class="card-grade-badge" id="card-grade-${key}"></div>
-        <div style="cursor:pointer;flex:1;min-width:0" onclick="openDetail('${cardUrl}')" title="View full report">
-          <div class="card-title">${esc(name)}</div>
-          <div class="card-url">${esc(cardUrl)}</div>
+        <div class="card-header-top">
+          <div class="card-grade-badge" id="card-grade-${key}"></div>
+          <div style="cursor:pointer;flex:1;min-width:0" onclick="openDetail('${cardUrl}')" title="View full report">
+            <div class="card-title">${esc(name)}</div>
+            <div class="card-url">${esc(cardUrl)}</div>
+          </div>
         </div>
         <div class="card-actions">
           <span class="badge badge-scanning" id="badge-${key}">— Pending</span>
