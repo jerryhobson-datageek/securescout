@@ -30,8 +30,20 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 ![Fix Recommendations](docs/screenshots/03_fix_recommendation.png)
 *Click any failing header to expand a copy-ready Nginx directive*
 
+![Setup](docs/screenshots/01_setup.png)
+*First-run setup — create your admin account with username + password*
+
 ![Login](docs/screenshots/01_login.png)
-*Password-protected — scrypt-hashed, 24hr session tokens*
+*Login screen — username and password, 24hr session tokens*
+
+![Admin Header](docs/screenshots/10_admin_header.png)
+*Admin header — shows logged-in user, role, and admin-only controls*
+
+![User Management](docs/screenshots/10c_users_modal.png)
+*User Management modal — add users, set roles, remove accounts*
+
+![Read-only View](docs/screenshots/10d_readonly_view.png)
+*Read-only user view — no Add Site, no Remove buttons; can scan but not modify*
 
 ![Add Site](docs/screenshots/04_add_site_modal.png)
 *Add any service on the fly — scans immediately and persists to config*
@@ -51,7 +63,8 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 - **Fix Recommendations** — click any failing header to expand a copy-ready Nginx directive
 - **Scan History** — grade sparkline per service showing trend across last 15 scans
 - **Discord Alerts** — notifies on site down/up, SSL expiry < 30 days, header grade drop
-- **Password Protection** — scrypt-hashed password with 24hr session tokens
+- **Multi-user Accounts** — admin creates named user accounts; two roles: `admin` (full access) and `read-only` (view + trigger scans, no service modification); user management modal with inline role change and remove
+- **Password Protection** — scrypt-hashed passwords with 24hr session tokens; per-user sessions invalidated on removal
 
 ## Tech Stack
 
@@ -105,7 +118,23 @@ Edit `config.json`:
 node server.js
 ```
 
-Open `http://localhost:3002` in your browser. On first visit you will be prompted to set a password.
+Open `http://localhost:3002` in your browser. On first visit you will be prompted to create an admin account (username + password). After that, log in normally — additional users can be added from the Users button in the header.
+
+## User Management
+
+SecureScout supports multiple named user accounts with two roles:
+
+| Role | Can do |
+|---|---|
+| `admin` | View, scan, add/remove services, manage users, change any password |
+| `read-only` | View dashboard, trigger scans — cannot add/remove services or manage users |
+
+On first run you create an **admin** account. After logging in, click **👥 Users** in the header to:
+- Add new users and assign a role
+- Change an existing user's role inline
+- Remove a user (their sessions are immediately invalidated)
+
+Admins cannot remove themselves or change their own role (to prevent accidental lockout).
 
 ## Deployment (systemd)
 
@@ -175,11 +204,15 @@ All endpoints except `/api/login`, `/api/setup`, and `/api/status` require a val
 | Endpoint | Method | Description |
 |---|---|---|
 | `GET /` | GET | Dashboard UI |
-| `GET /api/status` | GET | Auth status (passwordSet, authenticated) |
-| `POST /api/setup` | POST | Set initial password (first run only) |
+| `GET /api/status` | GET | Auth status — returns `setupDone`, `authenticated`, `role`, `username` |
+| `POST /api/setup` | POST | Create initial admin account (first run only) |
 | `POST /api/login` | POST | Authenticate and get session token |
 | `POST /api/logout` | POST | Invalidate session token |
-| `POST /api/change-password` | POST | Change password |
+| `POST /api/change-password` | POST | Change own password |
+| `GET /api/users` | GET | List all users — admin only |
+| `POST /api/users` | POST | Create a user — admin only |
+| `DELETE /api/users` | DELETE | Remove a user — admin only |
+| `PATCH /api/users` | PATCH | Change a user's role — admin only |
 | `GET /api/services` | GET | List configured services |
 | `POST /api/services` | POST | Add a service and trigger scan |
 | `DELETE /api/services` | DELETE | Remove a service |
