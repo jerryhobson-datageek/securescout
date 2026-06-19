@@ -99,23 +99,29 @@
 
   .card-grade-badge {
     position: absolute;
-    top: -0.8rem;
-    left: 1.1rem;
-    width: 36px;
-    height: 36px;
-    border-radius: 9px;
+    top: -1rem;
+    left: 1rem;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
     display: none;
     align-items: center;
     justify-content: center;
-    font-size: 1rem;
-    font-weight: 800;
+    font-size: 1.15rem;
+    font-weight: 900;
     z-index: 10;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-    border: 2px solid var(--surface);
+    box-shadow: 0 3px 10px rgba(0,0,0,0.6);
+    border: 2px solid var(--bg);
+    color: #fff;
   }
   .card-grade-badge.visible { display: inline-flex; }
+  .card-grade-badge.grade-A { background: #16a34a; }
+  .card-grade-badge.grade-B { background: #2563eb; }
+  .card-grade-badge.grade-C { background: #d97706; }
+  .card-grade-badge.grade-D { background: #ea580c; }
+  .card-grade-badge.grade-F { background: #dc2626; }
 
-  .card-header { padding: 14px 18px 14px 3.2rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: 14px 14px 0 0; }
+  .card-header { padding: 14px 18px 14px 3.6rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: 14px 14px 0 0; }
   .card-title { font-weight: 700; font-size: 0.95rem; }
   .card-url { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
   .card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
