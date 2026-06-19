@@ -92,12 +92,30 @@
   .summary-card .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
   .summary-card .value { font-size: 1.6rem; font-weight: 700; }
 
-  .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 18px; }
+  .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); column-gap: 18px; row-gap: 28px; padding-top: 1.2rem; }
 
-  .service-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: border-color 0.2s; }
+  .service-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: visible; transition: border-color 0.2s; }
   .service-card:hover { border-color: var(--cyan); }
 
-  .card-header { padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .card-grade-badge {
+    position: absolute;
+    top: -0.8rem;
+    left: 1.1rem;
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 800;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    border: 2px solid var(--surface);
+  }
+  .card-grade-badge.visible { display: inline-flex; }
+
+  .card-header { padding: 14px 18px 14px 3.2rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: 14px 14px 0 0; }
   .card-title { font-weight: 700; font-size: 0.95rem; }
   .card-url { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
   .card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
@@ -655,6 +673,7 @@ function cardHTML(name, cardUrl, skeleton, isPublic = false) {
   const key = btoa(cardUrl);
   return `
     <div class="service-card" id="card-${key}">
+      <div class="card-grade-badge" id="card-grade-${key}"></div>
       <div class="card-header">
         <div style="cursor:pointer" onclick="openDetail('${cardUrl}')" title="View full report">
           <div class="card-title">${esc(name)}</div>
@@ -755,9 +774,19 @@ function renderOneResult(r) {
     }
   }
 
+  const gradeEl = document.getElementById('card-grade-' + key);
+  if (gradeEl) {
+    const grade = r.securityHeaders?.grade;
+    if (grade) {
+      gradeEl.className = `card-grade-badge grade-${grade} visible`;
+      gradeEl.textContent = grade;
+    } else {
+      gradeEl.className = 'card-grade-badge';
+    }
+  }
+
   const summaryEl = document.getElementById('summary-' + key);
   if (summaryEl) {
-    const grade = r.securityHeaders?.grade;
     const score = r.securityHeaders?.score;
     const days = r.ssl?.ok ? r.ssl.daysLeft : null;
     const daysCls = days === null ? '' : days > 30 ? 'days-ok' : days > 14 ? 'days-warn' : 'days-crit';
@@ -765,7 +794,6 @@ function renderOneResult(r) {
     const waf = r.waf;
     const rt = r.responseTime;
     summaryEl.innerHTML = [
-      grade ? `<span class="grade-badge grade-${grade}" style="width:30px;height:30px;font-size:0.88rem;margin-right:2px" title="Header grade">${grade}</span>` : '',
       score !== undefined ? `<span class="sum-chip">${score}% headers</span>` : '',
       daysTxt ? `<span class="days-chip ${daysCls}">${daysTxt}</span>` : '',
       rt ? `<span class="sum-chip">⚡ ${rt}ms</span>` : '',
