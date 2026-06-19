@@ -563,6 +563,137 @@ async function scanService(service) {
 // ── In-memory cache ───────────────────────────────────────────────────────────
 const cache = {};
 
+// ── Public Status Page ────────────────────────────────────────────────────────
+function getPublicStatus() {
+  const publicSvcs = config.services.filter(s => s.public);
+  return {
+    title: config.statusPageTitle || 'System Status',
+    lastUpdated: new Date().toISOString(),
+    services: publicSvcs.map(s => {
+      const r = cache[s.url];
+      if (!r) return { name: s.name, status: 'unknown', grade: null, sslDaysLeft: null, responseTime: null, scannedAt: null };
+      let status = 'operational';
+      if (!r.reachable) {
+        status = 'outage';
+      } else {
+        const grade = r.securityHeaders?.grade;
+        const daysLeft = r.ssl?.ok ? r.ssl.daysLeft : null;
+        if (daysLeft !== null && daysLeft < 14) status = 'outage';
+        else if (grade === 'D' || grade === 'F' || (daysLeft !== null && daysLeft < 30)) status = 'degraded';
+      }
+      return { name: s.name, status, grade: r.securityHeaders?.grade || null, sslDaysLeft: r.ssl?.ok ? r.ssl.daysLeft : null, responseTime: r.responseTime || null, scannedAt: r.scannedAt || null };
+    })
+  };
+}
+
+const STATUS_PAGE_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System Status</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+.page{max-width:760px;margin:0 auto;padding:48px 20px 40px}
+.hd{text-align:center;margin-bottom:36px}
+.hd-logo{font-size:2.8rem;margin-bottom:6px}
+.hd-name{font-size:1.4rem;font-weight:700;letter-spacing:-.5px}
+.hd-name span{color:#22d3ee}
+.hd-sub{color:#8892b0;font-size:.8rem;margin-top:4px}
+.banner{border-radius:14px;padding:16px 22px;margin-bottom:22px;display:flex;align-items:center;gap:14px}
+.banner.ok{background:rgba(74,222,128,.09);border:1px solid rgba(74,222,128,.28)}
+.banner.warn{background:rgba(251,191,36,.09);border:1px solid rgba(251,191,36,.28)}
+.banner.err{background:rgba(248,113,113,.09);border:1px solid rgba(248,113,113,.28)}
+.bdot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.bdot.ok{background:#4ade80;animation:pg 2s infinite}
+.bdot.warn{background:#fbbf24}
+.bdot.err{background:#f87171;animation:pr 1s infinite}
+@keyframes pg{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes pr{0%,100%{opacity:1}50%{opacity:.4}}
+.btext{font-size:1.05rem;font-weight:700}
+.btext.ok{color:#4ade80}.btext.warn{color:#fbbf24}.btext.err{color:#f87171}
+.bmeta{font-size:.73rem;color:#8892b0;margin-top:2px}
+.list{display:grid;gap:8px;margin-bottom:28px}
+.row{background:#1a1d27;border:1px solid #2e3250;border-radius:10px;padding:13px 18px;display:flex;align-items:center;gap:12px}
+.rdot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.rdot.operational{background:#4ade80}.rdot.degraded{background:#fbbf24}
+.rdot.outage{background:#f87171}.rdot.unknown{background:#2e3250}
+.rname{flex:1;font-weight:600;font-size:.88rem}
+.rmeta{display:flex;gap:7px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.gc{width:26px;height:26px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:800}
+.gA{background:rgba(74,222,128,.2);color:#4ade80}.gB{background:rgba(96,165,250,.2);color:#60a5fa}
+.gC{background:rgba(251,191,36,.2);color:#fbbf24}.gD{background:rgba(251,146,60,.2);color:#fb923c}
+.gF{background:rgba(248,113,113,.2);color:#f87171}.g-{background:rgba(46,50,80,.5);color:#8892b0}
+.ssl{font-size:.67rem;padding:2px 7px;border-radius:8px;font-weight:600}
+.ssl-ok{background:rgba(74,222,128,.1);color:#4ade80;border:1px solid rgba(74,222,128,.3)}
+.ssl-w{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.ssl-c{background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.3)}
+.rt{font-size:.7rem;color:#8892b0;min-width:48px;text-align:right}
+.slabel{font-size:.7rem;font-weight:600;min-width:76px;text-align:right}
+.slabel.operational{color:#4ade80}.slabel.degraded{color:#fbbf24}
+.slabel.outage{color:#f87171}.slabel.unknown{color:#8892b0}
+.empty{text-align:center;padding:48px;color:#8892b0;font-size:.85rem;line-height:1.7}
+.rbar{text-align:center;font-size:.7rem;color:#8892b0;margin-bottom:14px}
+.foot{text-align:center;color:#8892b0;font-size:.7rem;border-top:1px solid #2e3250;padding-top:14px}
+.foot a{color:#22d3ee;text-decoration:none}
+@media(max-width:480px){.rt,.ssl{display:none}.slabel{min-width:60px}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="hd">
+    <div class="hd-logo">🛡️</div>
+    <div class="hd-name">Secure<span>Scout</span></div>
+    <div class="hd-sub" id="pageTitle">System Status</div>
+  </div>
+  <div class="banner" id="banner">
+    <div class="bdot" id="bdot"></div>
+    <div>
+      <div class="btext" id="btext">Loading…</div>
+      <div class="bmeta" id="bmeta"></div>
+    </div>
+  </div>
+  <div class="list" id="list"></div>
+  <div class="rbar" id="rbar"></div>
+  <div class="foot">Powered by <a href="/">SecureScout</a></div>
+</div>
+<script>
+var countdown = 60;
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function ago(iso){if(!iso)return 'never';var d=Math.floor((Date.now()-new Date(iso))/1000);return d<60?d+'s ago':d<3600?Math.floor(d/60)+'m ago':Math.floor(d/3600)+'h ago'}
+function sslChip(days){if(days===null||days===undefined)return '';var cls=days>30?'ssl-ok':days>14?'ssl-w':'ssl-c';return '<span class="ssl '+cls+'">'+days+'d SSL</span>'}
+function gradeChip(g){if(!g)return '<span class="gc g-">—</span>';return '<span class="gc g'+g+'">'+g+'</span>'}
+function render(data){
+  var title=data.title||'System Status';
+  document.getElementById('pageTitle').textContent=title;
+  document.title=title+' \xb7 SecureScout';
+  var svcs=data.services||[];
+  var overall=svcs.length===0?'unknown':svcs.some(function(s){return s.status==='outage'})?'outage':svcs.some(function(s){return s.status==='degraded'||s.status==='unknown'})?'warn':'ok';
+  var bclass={outage:'err',warn:'warn',ok:'ok',unknown:'warn'}[overall]||'warn';
+  var labels={ok:'All Systems Operational',warn:'Partial Degradation',err:'Service Outage'};
+  document.getElementById('banner').className='banner '+bclass;
+  var dot=document.getElementById('bdot');dot.className='bdot '+bclass;
+  var bt=document.getElementById('btext');bt.className='btext '+bclass;bt.textContent=labels[bclass]||'Status Unknown';
+  document.getElementById('bmeta').textContent='Updated '+ago(data.lastUpdated)+' \xb7 '+svcs.length+' service'+(svcs.length!==1?'s':'')+' monitored';
+  var list=document.getElementById('list');
+  if(svcs.length===0){list.innerHTML='<div class="empty">No public services configured yet.<br>An admin can mark services as public from the dashboard.</div>';return}
+  list.innerHTML=svcs.map(function(s){
+    var sl={operational:'Operational',degraded:'Degraded',outage:'Outage',unknown:'Unknown'}[s.status]||s.status;
+    return '<div class="row">'+
+      '<div class="rdot '+s.status+'"></div>'+
+      '<div class="rname">'+esc(s.name)+'</div>'+
+      '<div class="rmeta">'+gradeChip(s.grade)+sslChip(s.sslDaysLeft)+(s.responseTime?'<span class="rt">'+s.responseTime+' ms</span>':'')+
+      '<span class="slabel '+s.status+'">'+sl+'</span></div></div>'
+  }).join('')
+}
+async function load(){try{var r=await fetch('/api/public/status');if(r.ok)render(await r.json())}catch(e){}countdown=60}
+function tick(){countdown--;var rb=document.getElementById('rbar');if(countdown<=0){load()}else{rb.textContent='Refreshes in '+countdown+'s'}}
+load();setInterval(tick,1000);
+</script>
+</body>
+</html>`;
+
 // ── HTTP Server ───────────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
@@ -618,10 +749,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === '/api/public/status' && req.method === 'GET') {
+    res.writeHead(200, { ...json, 'Cache-Control': 'no-cache' });
+    res.end(JSON.stringify(getPublicStatus()));
+    return;
+  }
+
   if (pathname === '/') {
     const html = fs.readFileSync(path.join(__dirname, 'index.html'));
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
+    return;
+  }
+
+  if (pathname === '/status' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(STATUS_PAGE_HTML);
     return;
   }
 
@@ -726,7 +869,7 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/services' && req.method === 'GET') {
     res.writeHead(200, json);
-    res.end(JSON.stringify(config.services.map(s => ({ name: s.name, url: s.url, sslHost: s.sslHost || null }))));
+    res.end(JSON.stringify(config.services.map(s => ({ name: s.name, url: s.url, sslHost: s.sslHost || null, public: !!s.public }))));
     return;
   }
 
@@ -765,6 +908,23 @@ const server = http.createServer(async (req, res) => {
         delete cache[serviceUrl];
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
         res.writeHead(200, json); res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
+  if (pathname === '/api/services' && req.method === 'PATCH') {
+    if (session.role !== 'admin') { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Admin required' })); return; }
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const { url: serviceUrl, public: isPublic } = JSON.parse(body);
+        const svc = config.services.find(s => s.url === serviceUrl);
+        if (!svc) { res.writeHead(404, json); res.end(JSON.stringify({ error: 'Service not found' })); return; }
+        svc.public = !!isPublic;
+        saveConfig();
+        res.writeHead(200, json); res.end(JSON.stringify({ ok: true, public: svc.public }));
       } catch (e) { res.writeHead(400, json); res.end(JSON.stringify({ error: e.message })); }
     });
     return;

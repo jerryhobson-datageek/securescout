@@ -110,6 +110,9 @@
 
   .btn-remove { background: none; border: none; color: var(--muted); padding: 3px 6px; font-size: 0.8rem; border-radius: 6px; }
   .btn-remove:hover { color: var(--red); background: rgba(248,113,113,0.1); }
+  .btn-globe { background: none; border: none; color: var(--muted); padding: 3px 6px; font-size: 0.82rem; border-radius: 6px; opacity: 0.45; }
+  .btn-globe:hover { opacity: 1; background: rgba(34,211,238,0.08); }
+  .btn-globe.active { color: var(--cyan); opacity: 1; }
 
   .card-body { padding: 14px 18px; display: grid; gap: 10px; }
 
@@ -640,10 +643,10 @@ function apiFetch(path, opts = {}) {
 // ── Cards ─────────────────────────────────────────────────────────────────────
 function renderCards(svcs) {
   const grid = document.getElementById('servicesGrid');
-  grid.innerHTML = svcs.map(s => cardHTML(s.name, s.url, true)).join('');
+  grid.innerHTML = svcs.map(s => cardHTML(s.name, s.url, true, s.public)).join('');
 }
 
-function cardHTML(name, cardUrl, skeleton) {
+function cardHTML(name, cardUrl, skeleton, isPublic = false) {
   const key = btoa(cardUrl);
   return `
     <div class="service-card" id="card-${key}">
@@ -657,6 +660,7 @@ function cardHTML(name, cardUrl, skeleton) {
           <span class="badge" id="redirect-badge-${key}" style="display:none" title="HTTP→HTTPS redirect"></span>
           <button class="btn-secondary btn-sm" onclick="openDetail('${cardUrl}')">Report</button>
           <button class="btn-secondary btn-sm" onclick="scanOne('${cardUrl}')">Scan</button>
+          ${currentUser.role === 'admin' ? `<button id="globe-${key}" class="btn-globe${isPublic ? ' active' : ''}" title="${isPublic ? 'Public — click to hide from status page' : 'Private — click to show on status page'}" data-url="${cardUrl}" data-public="${isPublic}" onclick="togglePublic(this)">🌐</button>` : ''}
           ${currentUser.role === 'admin' ? `<button class="btn-remove" title="Remove" onclick="removeSite('${cardUrl}','${esc(name)}')">✕</button>` : ''}
         </div>
       </div>
@@ -1024,6 +1028,24 @@ async function removeSite(removeUrl, name) {
     if (card) card.remove();
     updateSummary();
   }
+}
+
+// ── Toggle Public Visibility ──────────────────────────────────────────────────
+async function togglePublic(btn) {
+  const cardUrl = btn.dataset.url;
+  const isPublic = btn.dataset.public === 'true';
+  const next = !isPublic;
+  const res = await apiFetch('/api/services', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: cardUrl, public: next })
+  });
+  if (!res) return;
+  const svc = services.find(s => s.url === cardUrl);
+  if (svc) svc.public = next;
+  btn.classList.toggle('active', next);
+  btn.dataset.public = next;
+  btn.title = next ? 'Public — click to hide from status page' : 'Private — click to show on status page';
 }
 
 // ── Change Password Modal ─────────────────────────────────────────────────────
