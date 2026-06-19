@@ -7,7 +7,7 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 ## Screenshots
 
 ![Dashboard](docs/screenshots/02_dashboard.png)
-*5 services monitored — SSL, WAF, security headers graded A–F, sparkline history per service*
+*5 services monitored — grade badge per card, SSL, WAF, security headers graded A–F, sparkline history per service*
 
 ![DNS Security](docs/screenshots/05_dns_dmarc.png)
 *DNS Security section — DNSSEC, CAA, SPF, DMARC badges, and DKIM selector checker*
@@ -53,6 +53,9 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 
 ![Globe Toggle](docs/screenshots/11d_globe_active.png)
 *🌐 globe button on each card (admin only) — lit cyan when public, dimmed when private*
+
+![Card Header](docs/screenshots/12_card_summary.png)
+*Card header — solid grade badge (A–F) on the left, service name and URL, action buttons on the row below*
 
 ![Add Site](docs/screenshots/04_add_site_modal.png)
 *Add any service on the fly — scans immediately and persists to config*
