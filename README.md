@@ -45,6 +45,15 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 ![Read-only View](docs/screenshots/10d_readonly_view.png)
 *Read-only user view — no Add Site, no Remove buttons; can scan but not modify*
 
+![Status Page](docs/screenshots/11e_status_page.png)
+*Public status page (/status) — no login required; operational status, grade, SSL countdown, and response time per service*
+
+![Status Page Empty](docs/screenshots/11_status_empty.png)
+*Status page before any services are marked public — neutral empty state*
+
+![Globe Toggle](docs/screenshots/11d_globe_active.png)
+*🌐 globe button on each card (admin only) — lit cyan when public, dimmed when private*
+
 ![Add Site](docs/screenshots/04_add_site_modal.png)
 *Add any service on the fly — scans immediately and persists to config*
 
@@ -63,6 +72,7 @@ A self-hosted security dashboard for monitoring your web services. Checks SSL ce
 - **Fix Recommendations** — click any failing header to expand a copy-ready Nginx directive
 - **Scan History** — grade sparkline per service showing trend across last 15 scans
 - **Discord Alerts** — notifies on site down/up, SSL expiry < 30 days, header grade drop
+- **Public Status Page** — unauthenticated `/status` page shareable with anyone; admin toggles per-service visibility with the 🌐 button; shows operational/degraded/outage status, grade, SSL countdown, and response time; auto-refreshes every 60 seconds
 - **Multi-user Accounts** — admin creates named user accounts; two roles: `admin` (full access) and `read-only` (view + trigger scans, no service modification); user management modal with inline role change and remove
 - **Password Protection** — scrypt-hashed passwords with 24hr session tokens; per-user sessions invalidated on removal
 
@@ -209,11 +219,14 @@ All endpoints except `/api/login`, `/api/setup`, and `/api/status` require a val
 | `POST /api/login` | POST | Authenticate and get session token |
 | `POST /api/logout` | POST | Invalidate session token |
 | `POST /api/change-password` | POST | Change own password |
+| `GET /api/public/status` | GET | Public status JSON — no auth required |
+| `GET /status` | GET | Public status page — no auth required |
 | `GET /api/users` | GET | List all users — admin only |
 | `POST /api/users` | POST | Create a user — admin only |
 | `DELETE /api/users` | DELETE | Remove a user — admin only |
 | `PATCH /api/users` | PATCH | Change a user's role — admin only |
 | `GET /api/services` | GET | List configured services |
+| `PATCH /api/services` | PATCH | Toggle public visibility on a service — admin only |
 | `POST /api/services` | POST | Add a service and trigger scan |
 | `DELETE /api/services` | DELETE | Remove a service |
 | `GET /api/scan/all` | GET | Scan all services |

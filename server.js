@@ -605,14 +605,16 @@ body{background:#0f1117;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-seri
 .banner.ok{background:rgba(74,222,128,.09);border:1px solid rgba(74,222,128,.28)}
 .banner.warn{background:rgba(251,191,36,.09);border:1px solid rgba(251,191,36,.28)}
 .banner.err{background:rgba(248,113,113,.09);border:1px solid rgba(248,113,113,.28)}
+.banner.info{background:rgba(46,50,80,.5);border:1px solid rgba(96,165,250,.2)}
 .bdot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
 .bdot.ok{background:#4ade80;animation:pg 2s infinite}
 .bdot.warn{background:#fbbf24}
 .bdot.err{background:#f87171;animation:pr 1s infinite}
+.bdot.info{background:#2e3250}
 @keyframes pg{0%,100%{opacity:1}50%{opacity:.55}}
 @keyframes pr{0%,100%{opacity:1}50%{opacity:.4}}
 .btext{font-size:1.05rem;font-weight:700}
-.btext.ok{color:#4ade80}.btext.warn{color:#fbbf24}.btext.err{color:#f87171}
+.btext.ok{color:#4ade80}.btext.warn{color:#fbbf24}.btext.err{color:#f87171}.btext.info{color:#8892b0}
 .bmeta{font-size:.73rem;color:#8892b0;margin-top:2px}
 .list{display:grid;gap:8px;margin-bottom:28px}
 .row{background:#1a1d27;border:1px solid #2e3250;border-radius:10px;padding:13px 18px;display:flex;align-items:center;gap:12px}
@@ -669,9 +671,9 @@ function render(data){
   document.getElementById('pageTitle').textContent=title;
   document.title=title+' \xb7 SecureScout';
   var svcs=data.services||[];
-  var overall=svcs.length===0?'unknown':svcs.some(function(s){return s.status==='outage'})?'outage':svcs.some(function(s){return s.status==='degraded'||s.status==='unknown'})?'warn':'ok';
-  var bclass={outage:'err',warn:'warn',ok:'ok',unknown:'warn'}[overall]||'warn';
-  var labels={ok:'All Systems Operational',warn:'Partial Degradation',err:'Service Outage'};
+  var overall=svcs.length===0?'none':svcs.some(function(s){return s.status==='outage'})?'outage':svcs.some(function(s){return s.status==='degraded'||s.status==='unknown'})?'warn':'ok';
+  var bclass={outage:'err',warn:'warn',ok:'ok',none:'info'}[overall]||'warn';
+  var labels={ok:'All Systems Operational',warn:'Partial Degradation',err:'Service Outage',info:'No Public Services Configured'};
   document.getElementById('banner').className='banner '+bclass;
   var dot=document.getElementById('bdot');dot.className='bdot '+bclass;
   var bt=document.getElementById('btext');bt.className='btext '+bclass;bt.textContent=labels[bclass]||'Status Unknown';
