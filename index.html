@@ -80,7 +80,7 @@
   .btn-danger { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
   .btn-sm { padding: 5px 11px; font-size: 0.77rem; }
 
-  main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+  main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; overflow: visible; }
 
   .summary-bar {
     display: grid;
@@ -92,9 +92,9 @@
   .summary-card .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
   .summary-card .value { font-size: 1.6rem; font-weight: 700; }
 
-  .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); column-gap: 18px; row-gap: 28px; padding-top: 1.2rem; }
+  .services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); column-gap: 18px; row-gap: 28px; padding-top: 2.5rem; overflow: visible; }
 
-  .service-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: visible; transition: border-color 0.2s; }
+  .service-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: visible !important; transition: border-color 0.2s; }
   .service-card:hover { border-color: var(--cyan); }
 
   .card-grade-badge {
