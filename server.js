@@ -739,6 +739,9 @@ const server = http.createServer(async (req, res) => {
 
   // ── Public routes (no auth) ──
   if (pathname === '/api/setup' && req.method === 'POST') {
+    const setupIp = getClientIp(req);
+    if (isRateLimited(setupIp)) { res.writeHead(429, json); res.end(JSON.stringify({ error: 'Too many attempts. Try again later.' })); return; }
+    recordLoginFailure(setupIp);
     if (config.users.length > 0) { res.writeHead(403, json); res.end(JSON.stringify({ error: 'Setup already complete' })); return; }
     let body = '';
     req.on('data', d => { body += d; });
