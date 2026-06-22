@@ -735,6 +735,17 @@ const server = http.createServer(async (req, res) => {
 
   const json = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, DELETE, PATCH, OPTIONS', 'Content-Type': 'application/json' };
 
+  // ── Security headers on every response (the frontend is a single inline
+  // <script>/<style> page with onclick handlers, hence 'unsafe-inline') ──
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'");
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+
   if (req.method === 'OPTIONS') { res.writeHead(204, json); res.end(); return; }
 
   // ── Public routes (no auth) ──
