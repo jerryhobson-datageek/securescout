@@ -86,6 +86,38 @@ setInterval(() => {
   for (const [token, s] of sessions) if (now > s.expires) sessions.delete(token);
 }, 3600000);
 
+// ── Login Rate Limiting ──────────────────────────────────────────────────────
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const loginAttempts = new Map(); // ip → { count, firstAttempt }
+
+function getClientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return fwd.split(',')[0].trim();
+  return req.socket.remoteAddress;
+}
+
+function isRateLimited(ip) {
+  const entry = loginAttempts.get(ip);
+  if (!entry) return false;
+  if (Date.now() - entry.firstAttempt > LOGIN_WINDOW_MS) { loginAttempts.delete(ip); return false; }
+  return entry.count >= LOGIN_MAX_ATTEMPTS;
+}
+
+function recordLoginFailure(ip) {
+  const entry = loginAttempts.get(ip);
+  if (!entry || Date.now() - entry.firstAttempt > LOGIN_WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, firstAttempt: Date.now() });
+  } else {
+    entry.count++;
+  }
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of loginAttempts) if (now - entry.firstAttempt > LOGIN_WINDOW_MS) loginAttempts.delete(ip);
+}, 3600000);
+
 // ── Discord Alerts ────────────────────────────────────────────────────────────
 async function sendDiscord(message) {
   const webhookUrl = config.discordWebhook;
@@ -727,6 +759,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/api/login' && req.method === 'POST') {
+    const ip = getClientIp(req);
+    if (isRateLimited(ip)) { res.writeHead(429, json); res.end(JSON.stringify({ error: 'Too many login attempts. Try again later.' })); return; }
     let body = '';
     req.on('data', d => { body += d; });
     req.on('end', () => {
@@ -734,7 +768,11 @@ const server = http.createServer(async (req, res) => {
         const { username, password } = JSON.parse(body);
         if (!config.users.length) { res.writeHead(400, json); res.end(JSON.stringify({ error: 'No users configured' })); return; }
         const user = config.users.find(u => u.username === username?.trim().toLowerCase());
-        if (!user || !verifyPassword(password, user.password)) { res.writeHead(401, json); res.end(JSON.stringify({ error: 'Invalid username or password' })); return; }
+        if (!user || !verifyPassword(password, user.password)) {
+          recordLoginFailure(ip);
+          res.writeHead(401, json); res.end(JSON.stringify({ error: 'Invalid username or password' })); return;
+        }
+        loginAttempts.delete(ip);
         const token = createSession(user);
         res.writeHead(200, json);
         res.end(JSON.stringify({ token, role: user.role, username: user.username }));
