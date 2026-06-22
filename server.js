@@ -737,7 +737,8 @@ const server = http.createServer(async (req, res) => {
 
   // ── Security headers on every response (the frontend is a single inline
   // <script>/<style> page with onclick handlers, hence 'unsafe-inline') ──
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // HSTS is intentionally omitted — Nginx Proxy Manager already sends a
+  // stronger policy (max-age=63072000; preload) for this and other hosts.
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'");
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
